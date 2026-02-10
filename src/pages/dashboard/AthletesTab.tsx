@@ -1,13 +1,25 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Plus, Pencil, Trash2, Search } from 'lucide-react';
+import { Plus, Pencil, Trash2, Search, Upload, Download } from 'lucide-react';
 import { toast } from 'sonner';
 import type { Tables } from '@/integrations/supabase/types';
 import AthleteFormDialog from '@/components/dashboard/AthleteFormDialog';
 import DeleteConfirmDialog from '@/components/dashboard/DeleteConfirmDialog';
+
+function parseCSV(text: string): Record<string, string>[] {
+  const lines = text.trim().split(/\r?\n/);
+  if (lines.length < 2) return [];
+  const headers = lines[0].split(',').map(h => h.trim().toLowerCase().replace(/[^a-z_]/g, ''));
+  return lines.slice(1).filter(l => l.trim()).map(line => {
+    const vals = line.split(',').map(v => v.trim().replace(/^"|"$/g, ''));
+    const row: Record<string, string> = {};
+    headers.forEach((h, i) => { row[h] = vals[i] || ''; });
+    return row;
+  });
+}
 
 export default function AthletesTab() {
   const [athletes, setAthletes] = useState<Tables<'athletes'>[]>([]);
@@ -16,6 +28,8 @@ export default function AthletesTab() {
   const [editing, setEditing] = useState<Tables<'athletes'> | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
 
   const loadAthletes = useCallback(async () => {
     const { data } = await supabase.from('athletes').select('*').order('full_name');
@@ -35,6 +49,45 @@ export default function AthletesTab() {
     loadAthletes();
   };
 
+  const handleCSVImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImporting(true);
+    try {
+      const text = await file.text();
+      const rows = parseCSV(text);
+      if (!rows.length) { toast.error('CSV has no data rows'); setImporting(false); return; }
+
+      const mapped = rows.map(r => ({
+        full_name: r.full_name || r.name || '',
+        team: r.team || r.club || null,
+        country_code: r.country_code || r.country || 'US',
+        country_flag: r.country_flag || r.flag || '🇺🇸',
+      })).filter(r => r.full_name);
+
+      if (!mapped.length) { toast.error('No valid rows found. CSV needs a "full_name" or "name" column.'); setImporting(false); return; }
+
+      const { error } = await supabase.from('athletes').insert(mapped);
+      if (error) throw error;
+      toast.success(`Imported ${mapped.length} athletes`);
+      loadAthletes();
+    } catch (err: any) {
+      toast.error(err.message || 'Import failed');
+    } finally {
+      setImporting(false);
+      if (fileRef.current) fileRef.current.value = '';
+    }
+  };
+
+  const downloadTemplate = () => {
+    const csv = 'full_name,team,country_code,country_flag\nJane Doe,Portland TC,US,🇺🇸\n';
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'athletes-template.csv';
+    a.click();
+  };
+
   const filtered = search
     ? athletes.filter(a =>
         a.full_name.toLowerCase().includes(search.toLowerCase()) ||
@@ -48,9 +101,18 @@ export default function AthletesTab() {
     <div>
       <div className="flex items-center justify-between mb-6">
         <h2 className="text-2xl font-bold">Athletes</h2>
-        <Button size="sm" onClick={() => { setEditing(null); setFormOpen(true); }}>
-          <Plus className="h-4 w-4 mr-1" /> Add Athlete
-        </Button>
+        <div className="flex items-center gap-2">
+          <input ref={fileRef} type="file" accept=".csv" className="hidden" onChange={handleCSVImport} />
+          <Button size="sm" variant="outline" onClick={downloadTemplate}>
+            <Download className="h-4 w-4 mr-1" /> Template
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => fileRef.current?.click()} disabled={importing}>
+            <Upload className="h-4 w-4 mr-1" /> {importing ? 'Importing…' : 'Import CSV'}
+          </Button>
+          <Button size="sm" onClick={() => { setEditing(null); setFormOpen(true); }}>
+            <Plus className="h-4 w-4 mr-1" /> Add Athlete
+          </Button>
+        </div>
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 mb-6">
