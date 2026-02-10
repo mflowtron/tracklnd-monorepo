@@ -1,58 +1,119 @@
 
-# Diagnose and Fix Content Loading Reliability
 
-## Root Cause Analysis
+# Fix Silent Supabase Request Hangs
 
-After thorough investigation:
+## Problem
 
-- **Database**: Healthy. Contains 4 meets, 12 works, 1 banner, 24 events.
-- **RLS Policies**: Correct. All public tables have open SELECT policies.
-- **No console errors**: The app renders without errors -- queries just silently return nothing.
-- **Zero network requests**: The browser tool shows literally zero XHR/fetch requests being made, even after 10+ seconds across multiple page navigations. Even the auth `getSession()` call from AuthContext doesn't fire.
+The Supabase JS client's `fetch` calls are silently hanging -- they never resolve or reject. This means:
+- `.then()` callbacks never fire, so `loading` stays `true` forever
+- No console errors appear because nothing throws
+- Pages show skeleton loaders indefinitely
 
-This points to an **intermittent environment issue** (the Supabase instance going to sleep or the preview sandbox having connectivity issues). The code itself is correct -- when requests go through, everything works.
+## Root Cause
 
-However, the current code has a significant **resilience problem**: every data-fetching page uses the `.then()` pattern without error handling, and conditionally renders content with `{data.length > 0 && ...}`. When requests fail or hang, users see a blank page with no feedback.
+The `fetch()` API has no built-in timeout. When the backend instance is cold or the connection stalls, `fetch` hangs indefinitely. The Supabase JS client does not add timeouts by default.
 
-## Plan: Add Error Handling and Loading States
+## Solution
 
-### 1. `src/pages/public/HomePage.tsx`
+Create a wrapper utility that adds `AbortController` timeouts to the Supabase client's `fetch`, and add retry logic to all data-fetching pages.
 
-- Add a `loading` state (default `true`) that turns `false` after all fetches complete
-- Add `.catch()` handlers to each Supabase call to log errors and prevent silent failures
-- Show a skeleton/loading state while data is being fetched
-- If all sections are empty after loading completes, show a fallback message instead of a blank page
+### 1. Create `src/lib/supabase-fetch.ts` -- Timeout Wrapper
 
-### 2. `src/pages/public/MeetsPage.tsx`
+A utility function that wraps any Supabase query promise with an `AbortSignal` timeout. If a request takes longer than 10 seconds, it aborts and throws a clear error. Also includes a `fetchWithRetry` helper that retries up to 2 times with exponential backoff.
 
-- Add `loading` state with a skeleton grid while fetching
-- Add `.catch()` error handling
-- Show "No meets found" only after loading is complete (currently shows it while data is still loading)
+### 2. Update `src/integrations/supabase/client.ts` -- NO CHANGE
 
-### 3. `src/pages/public/MeetDetailPage.tsx`
+This file is auto-generated and must not be edited. Instead, the Supabase client supports a custom `fetch` option. However since we cannot edit client.ts, we will wrap at the call site level.
 
-- Already has a "Loading..." fallback, but add error handling to the Supabase calls
-- Add a retry mechanism or error state if the meet data fails to load
+### 3. Update `src/pages/public/HomePage.tsx`
 
-### 4. `src/pages/dashboard/OverviewPage.tsx`
+- Wrap each Supabase query call with a `Promise.race` against a timeout
+- Add `console.log('HomePage: fetching data...')` at effect start for debuggability
+- Add `console.log('HomePage: fetch complete')` after `Promise.allSettled` resolves
+- If all fetches timeout/fail, show an error state with a "Retry" button instead of permanent skeletons
 
-- Add `loading` state (this is likely the "endless spinner" -- the dashboard layout renders but OverviewPage shows nothing while waiting)
-- Add `.catch()` handlers
-- Show skeleton cards while loading
+### 4. Update `src/pages/public/MeetsPage.tsx`
 
-### 5. `src/contexts/AuthContext.tsx`
+- Same timeout wrapping pattern
+- Add retry button on failure
+- Add debug logging
 
-- Add error handling to `getSession()`, `fetchProfile()`, and `fetchRole()` calls
-- Ensure `loading` is set to `false` even if requests fail (currently if `getSession()` hangs, `loading` stays `true` forever, causing the ProtectedRoute spinner to show indefinitely -- this is the dashboard endless spinner)
+### 5. Update `src/pages/public/MeetDetailPage.tsx`
+
+- Same timeout wrapping pattern
+- Already has error state UI from previous changes, ensure it triggers on timeout
+
+### 6. Update `src/pages/dashboard/OverviewPage.tsx`
+
+- Same timeout wrapping pattern
+- Add retry button on failure
+
+### 7. Update `src/contexts/AuthContext.tsx`
+
+- Wrap `getSession()` with a timeout (it currently has an 8s safety timeout for the loading state, but `getSession()` itself can hang silently)
+- Wrap `fetchProfile()` and `fetchRole()` with timeouts
+- Add debug logging: `console.log('Auth: initializing...')`, `console.log('Auth: session resolved')`
 
 ## Technical Details
 
-- Use `Promise.allSettled()` instead of individual `.then()` calls where appropriate so one failed request doesn't block the others
-- Add `console.error` in catch blocks so failures are visible in logs for debugging
-- Add a timeout fallback: if loading takes more than 8 seconds, set loading to false and show whatever data arrived
-- Keep the conditional rendering but gate it behind `!loading` checks
+### Timeout Utility (`src/lib/supabase-fetch.ts`)
+
+```typescript
+export function withTimeout<T>(promise: PromiseLike<T>, ms = 10000): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`Request timed out after ${ms}ms`)), ms);
+    promise.then(
+      (val) => { clearTimeout(timer); resolve(val); },
+      (err) => { clearTimeout(timer); reject(err); }
+    );
+  });
+}
+
+export async function fetchWithRetry<T>(
+  fn: () => PromiseLike<T>,
+  retries = 2,
+  timeoutMs = 10000
+): Promise<T> {
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      return await withTimeout(fn(), timeoutMs);
+    } catch (err) {
+      if (attempt === retries) throw err;
+      await new Promise(r => setTimeout(r, 1000 * (attempt + 1)));
+    }
+  }
+  throw new Error('Unreachable');
+}
+```
+
+### Usage Pattern in Pages
+
+Before:
+```typescript
+supabase.from('meets').select('*').order(...)
+  .then(({ data }) => setMeets(data || []))
+```
+
+After:
+```typescript
+fetchWithRetry(() => supabase.from('meets').select('*').order(...))
+  .then(({ data }) => setMeets(data || []))
+  .catch(err => { console.error('Failed:', err); setError(true); })
+  .finally(() => setLoading(false));
+```
+
+### Error/Retry UI
+
+Each page gets an error state with a retry button:
+```
+Something went wrong loading this content.
+[Try Again]
+```
+
+Clicking "Try Again" re-runs the data fetch.
 
 ### Files Modified
+- `src/lib/supabase-fetch.ts` (new)
 - `src/pages/public/HomePage.tsx`
 - `src/pages/public/MeetsPage.tsx`
 - `src/pages/public/MeetDetailPage.tsx`
