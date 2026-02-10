@@ -286,12 +286,12 @@ export default function RankingList({ entries, savedRanking, isAuthenticated, on
               )}
             >
               <div
-                className="touch-none select-none"
+                className="touch-none select-none p-1.5 -m-1.5 sm:p-0 sm:m-0"
                 onTouchStart={(e) => handleTouchStart(index, e)}
                 onTouchMove={handleTouchMove}
                 onTouchEnd={handleTouchEnd}
               >
-                <GripVertical className={cn('h-4 w-4 shrink-0', isDark ? 'text-white/30' : 'text-muted-foreground/50')} />
+                <GripVertical className={cn('h-4 w-4 sm:h-4 sm:w-4 h-5 w-5 shrink-0', isDark ? 'text-white/30' : 'text-muted-foreground/50')} />
               </div>
 
               <span className={cn('w-6 text-center font-mono text-xs font-bold shrink-0', medal ? medal.text : isDark ? 'text-white/40' : 'text-muted-foreground')}>
