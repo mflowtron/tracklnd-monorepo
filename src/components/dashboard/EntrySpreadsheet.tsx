@@ -6,8 +6,10 @@ import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandItem, CommandList } from '@/components/ui/command';
-import { Check, Plus, Trash2, UserPlus, Loader2 } from 'lucide-react';
+import { Check, Plus, Trash2, UserPlus, Loader2, ClipboardPaste } from 'lucide-react';
 import { toast } from 'sonner';
+import { Textarea } from '@/components/ui/textarea';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 
 interface Athlete {
   id: string;
@@ -89,6 +91,9 @@ export default function EntrySpreadsheet({ eventId, entries, onDataChanged }: Pr
   const [allAthletes, setAllAthletes] = useState<Athlete[]>([]);
   const [rows, setRows] = useState<RowState[]>([]);
   const [openPopoverIdx, setOpenPopoverIdx] = useState<number | null>(null);
+  const [pasteDialogOpen, setPasteDialogOpen] = useState(false);
+  const [pasteText, setPasteText] = useState('');
+  const [isPasting, setIsPasting] = useState(false);
 
   // Load all athletes once
   useEffect(() => {
@@ -193,6 +198,81 @@ export default function EntrySpreadsheet({ eventId, entries, onDataChanged }: Pr
     if (place === '2') return '🥈 ';
     if (place === '3') return '🥉 ';
     return '';
+  };
+
+  // Bulk paste: parse tab/comma-separated rows, match athletes, create rows
+  const handleBulkPaste = async () => {
+    if (!pasteText.trim()) return;
+    setIsPasting(true);
+
+    const lines = pasteText.trim().split('\n').filter(l => l.trim());
+    const newRows: RowState[] = [];
+    const athletesToCreate: { lineIdx: number; name: string }[] = [];
+
+    for (const line of lines) {
+      // Support tab-separated or comma-separated: Name\tPlace\tResult or Name,Place,Result
+      const parts = line.includes('\t') ? line.split('\t') : line.split(',');
+      const name = (parts[0] || '').trim();
+      if (!name) continue;
+
+      const place = (parts[1] || '').trim();
+      const result = (parts[2] || '').trim();
+
+      // Try to match athlete
+      const q = name.toLowerCase();
+      let matched = allAthletes.find(a => a.full_name.toLowerCase() === q);
+      if (!matched) {
+        matched = allAthletes.find(a => a.full_name.toLowerCase().startsWith(q));
+      }
+      if (!matched) {
+        matched = allAthletes.find(a => a.full_name.toLowerCase().includes(q));
+      }
+
+      const row: RowState = {
+        athleteSearch: matched ? matched.full_name : name,
+        selectedAthlete: matched || null,
+        place: place.replace(/[^0-9]/g, ''),
+        result,
+        isPb: false,
+        isNew: true,
+        isSaving: false,
+      };
+      newRows.push(row);
+
+      if (!matched) {
+        athletesToCreate.push({ lineIdx: newRows.length - 1, name });
+      }
+    }
+
+    // Create unmatched athletes in bulk
+    if (athletesToCreate.length > 0) {
+      const { data: created, error } = await supabase
+        .from('athletes')
+        .insert(athletesToCreate.map(a => ({ full_name: a.name })))
+        .select();
+
+      if (error) {
+        toast.error('Failed to create some athletes: ' + error.message);
+      } else if (created) {
+        setAllAthletes(prev => [...prev, ...created]);
+        for (let i = 0; i < athletesToCreate.length; i++) {
+          const row = newRows[athletesToCreate[i].lineIdx];
+          const athlete = created[i];
+          if (athlete) {
+            row.selectedAthlete = athlete;
+            row.athleteSearch = athlete.full_name;
+          }
+        }
+      }
+    }
+
+    setRows(prev => [...prev, ...newRows]);
+    setPasteDialogOpen(false);
+    setPasteText('');
+    setIsPasting(false);
+
+    const matched = newRows.filter(r => r.selectedAthlete).length;
+    toast.success(`Pasted ${newRows.length} rows (${matched} matched, ${newRows.length - matched} unmatched)`);
   };
 
   return (
@@ -339,9 +419,49 @@ export default function EntrySpreadsheet({ eventId, entries, onDataChanged }: Pr
         </table>
       </div>
 
-      <Button variant="outline" size="sm" className="mt-3" onClick={addRow}>
-        <Plus className="h-3.5 w-3.5 mr-1" /> Add Row
-      </Button>
+      <div className="flex items-center gap-2 mt-3">
+        <Button variant="outline" size="sm" onClick={addRow}>
+          <Plus className="h-3.5 w-3.5 mr-1" /> Add Row
+        </Button>
+        <Button variant="outline" size="sm" onClick={() => setPasteDialogOpen(true)}>
+          <ClipboardPaste className="h-3.5 w-3.5 mr-1" /> Paste from Spreadsheet
+        </Button>
+      </div>
+
+      <Dialog open={pasteDialogOpen} onOpenChange={setPasteDialogOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Paste Entries from Spreadsheet</DialogTitle>
+            <DialogDescription>
+              Paste rows copied from Excel or Google Sheets. Expected format: one athlete per line with columns separated by tabs or commas.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              <strong>Format:</strong> Name, Place, Result (one per line)
+            </p>
+            <p className="text-xs text-muted-foreground font-mono bg-muted p-2 rounded">
+              Sha'Carri Richardson{'\t'}1{'\t'}10.71<br />
+              Shelly-Ann Fraser{'\t'}2{'\t'}10.89<br />
+              Elaine Thompson{'\t'}3{'\t'}10.92
+            </p>
+            <Textarea
+              value={pasteText}
+              onChange={(e) => setPasteText(e.target.value)}
+              placeholder="Paste your data here…"
+              rows={8}
+              className="font-mono text-sm"
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPasteDialogOpen(false)}>Cancel</Button>
+            <Button onClick={handleBulkPaste} disabled={isPasting || !pasteText.trim()}>
+              {isPasting ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <ClipboardPaste className="h-4 w-4 mr-1" />}
+              Import {pasteText.trim().split('\n').filter(l => l.trim()).length} Rows
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
