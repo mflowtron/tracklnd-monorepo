@@ -17,6 +17,7 @@ export default function MeetDetailPage() {
   const [events, setEvents] = useState<any[]>([]);
   const [entriesByEvent, setEntriesByEvent] = useState<Record<string, any[]>>({});
   const [hasBroadcast, setHasBroadcast] = useState(false);
+  const [pickCounts, setPickCounts] = useState<Record<string, number>>({});
   
   const [savedRankings, setSavedRankings] = useState<Record<string, string[]>>({});
 
@@ -45,6 +46,12 @@ export default function MeetDetailPage() {
     // Load saved rankings
     const rankings = await getUserRankingsForMeet(meetData.id);
     setSavedRankings(rankings);
+
+    // Load pick counts
+    const { data: counts } = await supabase.rpc('get_event_pick_counts', { meet_id_param: meetData.id });
+    const countsMap: Record<string, number> = {};
+    (counts || []).forEach((r: any) => { countsMap[r.event_id] = Number(r.pick_count); });
+    setPickCounts(countsMap);
 
     // Check for active broadcast
     const { data: bc } = await supabase
@@ -181,6 +188,11 @@ export default function MeetDetailPage() {
                     <span className="text-xs text-muted-foreground flex items-center gap-1">
                       <Users className="h-3 w-3" /> {entries.length}
                     </span>
+                    {(pickCounts[evt.id] || 0) > 0 && (
+                      <span className="text-xs text-amber-600 flex items-center gap-1">
+                        <Trophy className="h-3 w-3" /> {pickCounts[evt.id]} pick{pickCounts[evt.id] !== 1 ? 's' : ''}
+                      </span>
+                    )}
                   </div>
                 </AccordionTrigger>
                 <AccordionContent>

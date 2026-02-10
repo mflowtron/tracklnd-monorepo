@@ -434,6 +434,13 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      get_event_pick_counts: {
+        Args: { meet_id_param: string }
+        Returns: {
+          event_id: string
+          pick_count: number
+        }[]
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
