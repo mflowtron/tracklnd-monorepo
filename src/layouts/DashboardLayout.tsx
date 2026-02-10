@@ -42,7 +42,7 @@ export default function DashboardLayout() {
     ? profile.display_name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2)
     : '?';
 
-  const currentTitle = pageTitles[location.pathname] || 'Dashboard';
+  const currentTitle = pageTitles[location.pathname] || (location.pathname.startsWith('/dashboard/meets/') ? 'Meet Details' : 'Dashboard');
 
   const visibleItems = sidebarItems.filter(item => !item.adminOnly || isAdmin);
 
