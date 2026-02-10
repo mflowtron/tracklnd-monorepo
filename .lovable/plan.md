@@ -1,49 +1,42 @@
 
-
-# Merge Ranking into Main Athlete Listing
+# Touch Drag-and-Drop for Mobile
 
 ## Overview
 
-Instead of having two separate views (a results table and a separate "Your Picks" drag-and-drop list below it), merge them into a single unified list. Each athlete row is both informational (showing result, place, team) AND draggable for ranking. The login blurb moves above the list for maximum visibility.
+Replace the up/down arrow buttons with touch-based drag-and-drop using `touchstart`, `touchmove`, and `touchend` events. HTML5 drag events don't work on mobile browsers, so we need a custom touch implementation that mirrors the existing mouse drag behavior.
 
 ## Changes
 
-### 1. `src/pages/public/MeetDetailPage.tsx`
+### File: `src/components/rankings/RankingList.tsx`
 
-- **Remove** the separate results table (lines 191-217) and the separate `RankingList` section below it (lines 220-228)
-- **Replace** with a single `RankingList` component that receives full entry data (result, place, PB status) and renders everything in one unified list
-- Update the `RankingList` props to pass entries with their result data, not just athlete info
+**Remove:**
+- The `ChevronUp` and `ChevronDown` imports from lucide-react
+- The `moveItem` function
+- The mobile arrow button block (lines 262-278) -- the `sm:hidden` div with up/down buttons
 
-### 2. `src/components/rankings/RankingList.tsx`
+**Add touch drag handlers:**
+- `handleTouchStart(index, e)`: Record the starting touch Y position, snapshot the order into `preDragOrder`, set `dragIndex` state, and store the touched element's height for calculating positions
+- `handleTouchMove(e)`: Calculate which row index the finger is currently over by comparing `touch.clientY` against the container's row positions. If the target index changed, reorder the `order` array live (same logic as the existing `handleDragOver`)
+- `handleTouchEnd`: Finalize the drag, mark `hasChanges` if order changed, clear drag state
 
-**Props update:**
-- Expand the `Entry` interface to include `place`, `result`, `is_pb` fields so the component can render result data inline
+**Refs needed:**
+- `containerRef` (ref on the list container div) -- used to get bounding rects of child rows during touch move
+- `touchStartY` ref -- stores initial touch Y coordinate
+- `touchDragIndex` ref -- tracks which index the finger is currently over
 
-**Layout changes -- unified rows:**
-- Each draggable row now shows: grip handle | rank pick number/medal | athlete name + flag | team | result | PB badge | mobile arrows
-- This replaces both the old static table AND the old drag list with one combined view
-- Rows with official place 1-3 keep the amber highlight for results context
+**Row changes:**
+- Add `onTouchStart`, `onTouchMove`, `onTouchEnd` to each draggable row
+- On touch start, call `e.preventDefault()` to prevent scroll hijacking (only on the grip handle area to avoid blocking normal scroll on the row content)
+- The grip handle (`GripVertical`) becomes the touch target -- attach touch events specifically to it so users can still scroll the page by touching elsewhere on the row
 
-**Login blurb moved to top:**
-- For logged-out users, render the "Pick your podium" info blurb ABOVE the athlete list (not instead of it)
-- The athlete list still renders below in a read-only state (no grip handles, no arrows) so users can see the data
-- This ensures the CTA is the first thing users see when expanding an event
+**Visual feedback:**
+- Reuse the same `isBeingDragged` styling (`opacity-50 scale-[0.98] shadow-lg ring-2`) that already works for mouse drag
+- Rows animate with the existing `transition-all duration-150`
 
-**Logged-in vs logged-out rendering:**
-- Logged in: grip handles visible, rows draggable, medal styling on top 3 picks, save/cancel buttons
-- Logged out: blurb at top, then a static list of athletes with results (same row layout but no drag affordances)
+**Key detail -- preventing page scroll during drag:**
+- When the user starts dragging via the grip handle, we need `touch-action: none` on the row being dragged to prevent the browser from scrolling the page
+- Apply this inline style conditionally when `isBeingDragged` is true
 
-### Visual layout per row (merged)
+### No new dependencies
 
-```text
-| Grip | Pick# | Athlete Flag Name | Team | Result | PB |
-```
-
-- Pick# shows medal emoji for top 3 picks (logged-in users) or official place (logged-out)
-- Result column shows the official time/mark
-- PB badge appears when `is_pb` is true
-
-### Files Modified
-- `src/pages/public/MeetDetailPage.tsx` -- simplify to single `RankingList` rendering
-- `src/components/rankings/RankingList.tsx` -- merge result data into draggable rows, move blurb to top
-
+Pure touch event handling -- no external drag library needed.
