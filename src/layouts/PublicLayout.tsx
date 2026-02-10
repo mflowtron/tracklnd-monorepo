@@ -17,7 +17,7 @@ const navLinks = [
 ];
 
 export default function PublicLayout() {
-  const { isAuthenticated, profile, logout } = useAuth();
+  const { isAuthenticated, profile, logout, loading } = useAuth();
   const location = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -50,7 +50,9 @@ export default function PublicLayout() {
           </nav>
 
           <div className="hidden md:flex items-center gap-3">
-            {isAuthenticated ? (
+            {loading ? (
+              <div className="h-8 w-8" /> /* placeholder while auth resolves */
+            ) : isAuthenticated ? (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="ghost" size="icon" className="rounded-full">
@@ -97,7 +99,7 @@ export default function PublicLayout() {
                 {link.label}
               </Link>
             ))}
-            {isAuthenticated ? (
+            {loading ? null : isAuthenticated ? (
               <>
                 <Link to="/dashboard" className="block text-sm font-medium" onClick={() => setMobileOpen(false)}>Dashboard</Link>
                 <Link to="/account" className="block text-sm font-medium" onClick={() => setMobileOpen(false)}>Account</Link>

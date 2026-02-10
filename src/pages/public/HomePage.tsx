@@ -14,30 +14,49 @@ import { fetchWithRetry } from '@/lib/supabase-fetch';
 
 export default function HomePage() {
   const [banner, setBanner] = useState<any>(null);
+  const [bannerLoaded, setBannerLoaded] = useState(false);
   const [shorts, setShorts] = useState<any[]>([]);
+  const [shortsLoaded, setShortsLoaded] = useState(false);
   const [upcomingMeets, setUpcomingMeets] = useState<any[]>([]);
+  const [meetsLoaded, setMeetsLoaded] = useState(false);
   const [recentWorks, setRecentWorks] = useState<any[]>([]);
+  const [worksLoaded, setWorksLoaded] = useState(false);
   const [email, setEmail] = useState('');
-  const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
+
+  const loading = !bannerLoaded || !shortsLoaded || !meetsLoaded || !worksLoaded;
 
   const [shortsRef] = useEmblaCarousel({ loop: true, align: 'start' }, [Autoplay({ delay: 4000 })]);
   const [worksRef] = useEmblaCarousel({ loop: false, align: 'start', slidesToScroll: 1 });
 
   const loadData = useCallback(() => {
     console.log('HomePage: fetching data...');
-    setLoading(true);
+    setBannerLoaded(false);
+    setShortsLoaded(false);
+    setMeetsLoaded(false);
+    setWorksLoaded(false);
     setError(false);
-    Promise.allSettled([
-      fetchWithRetry(() => supabase.from('banners').select('*').eq('placement', 'homepage').eq('is_active', true).limit(1).maybeSingle()).then(({ data }) => setBanner(data)),
-      fetchWithRetry(() => supabase.from('works').select('*').eq('work_type', 'short').eq('status', 'published').order('published_at', { ascending: false }).limit(6)).then(({ data }) => setShorts(data || [])),
-      fetchWithRetry(() => supabase.from('meets').select('*').in('status', ['upcoming', 'live']).order('start_date', { ascending: true }).limit(4)).then(({ data }) => setUpcomingMeets(data || [])),
-      fetchWithRetry(() => supabase.from('works').select('*').in('work_type', ['work', 'feature']).eq('status', 'published').order('published_at', { ascending: false }).limit(6)).then(({ data }) => setRecentWorks(data || [])),
-    ]).then(results => {
-      const allFailed = results.every(r => r.status === 'rejected');
-      if (allFailed) setError(true);
-      console.log('HomePage: fetch complete', results.map(r => r.status));
-    }).finally(() => setLoading(false));
+
+    // Fire all queries in parallel — each section renders as soon as its data arrives
+    fetchWithRetry(() => supabase.from('banners').select('*').eq('placement', 'homepage').eq('is_active', true).limit(1).maybeSingle())
+      .then(({ data }) => setBanner(data))
+      .catch(() => {})
+      .finally(() => setBannerLoaded(true));
+
+    fetchWithRetry(() => supabase.from('works').select('*').eq('work_type', 'short').eq('status', 'published').order('published_at', { ascending: false }).limit(6))
+      .then(({ data }) => setShorts(data || []))
+      .catch(() => {})
+      .finally(() => setShortsLoaded(true));
+
+    fetchWithRetry(() => supabase.from('meets').select('*').in('status', ['upcoming', 'live']).order('start_date', { ascending: true }).limit(4))
+      .then(({ data }) => setUpcomingMeets(data || []))
+      .catch(() => {})
+      .finally(() => setMeetsLoaded(true));
+
+    fetchWithRetry(() => supabase.from('works').select('*').in('work_type', ['work', 'feature']).eq('status', 'published').order('published_at', { ascending: false }).limit(6))
+      .then(({ data }) => setRecentWorks(data || []))
+      .catch(() => {})
+      .finally(() => setWorksLoaded(true));
   }, []);
 
   useEffect(() => { loadData(); }, [loadData]);
@@ -71,24 +90,12 @@ export default function HomePage() {
     );
   }
 
-  if (loading) {
-    return (
-      <div>
-        <Skeleton className="h-[70vh] min-h-[500px] w-full rounded-none" />
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 space-y-4">
-          <Skeleton className="h-8 w-48" />
-          <div className="flex gap-4">
-            {[1, 2, 3].map(i => <Skeleton key={i} className="w-[320px] sm:w-[400px] aspect-[16/10] rounded-lg flex-shrink-0" />)}
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div>
       {/* 1. Hero Banner */}
-      {banner && (
+      {!bannerLoaded ? (
+        <Skeleton className="h-[70vh] min-h-[500px] w-full rounded-none" />
+      ) : banner && (
         <section className="relative h-[70vh] min-h-[500px] flex items-center justify-center overflow-hidden">
           <img src={banner.image_url} alt="" className="absolute inset-0 w-full h-full object-cover" />
           <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/40 to-black/20" />
@@ -105,7 +112,14 @@ export default function HomePage() {
       )}
 
       {/* 2. Weekly Shorts Carousel */}
-      {shorts.length > 0 && (
+      {!shortsLoaded ? (
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 space-y-4">
+          <Skeleton className="h-8 w-48" />
+          <div className="flex gap-4">
+            {[1, 2, 3].map(i => <Skeleton key={i} className="w-[320px] sm:w-[400px] aspect-[16/10] rounded-lg flex-shrink-0" />)}
+          </div>
+        </div>
+      ) : shorts.length > 0 && (
         <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
           <div className="flex items-center justify-between mb-8">
             <h2 className="font-display text-2xl sm:text-3xl">Weekly Shorts</h2>
@@ -146,7 +160,14 @@ export default function HomePage() {
       )}
 
       {/* 3. Upcoming Meets */}
-      {upcomingMeets.length > 0 && (
+      {!meetsLoaded ? (
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 space-y-4">
+          <Skeleton className="h-8 w-48" />
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+            {[1, 2, 3].map(i => <Skeleton key={i} className="aspect-[16/9] rounded-lg" />)}
+          </div>
+        </div>
+      ) : upcomingMeets.length > 0 && (
         <section className="bg-secondary/50">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
             <div className="flex items-center justify-between mb-8">
@@ -175,7 +196,14 @@ export default function HomePage() {
       )}
 
       {/* 4. Recent Works Carousel */}
-      {recentWorks.length > 0 && (
+      {!worksLoaded ? (
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 space-y-4">
+          <Skeleton className="h-8 w-48" />
+          <div className="flex gap-6">
+            {[1, 2, 3].map(i => <Skeleton key={i} className="w-[300px] sm:w-[360px] aspect-[4/3] rounded-lg flex-shrink-0" />)}
+          </div>
+        </div>
+      ) : recentWorks.length > 0 && (
         <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
           <div className="flex items-center justify-between mb-8">
             <h2 className="font-display text-2xl sm:text-3xl">Recent Works</h2>
