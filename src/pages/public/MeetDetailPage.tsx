@@ -4,15 +4,21 @@ import { supabase } from '@/integrations/supabase/client';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
-import { ExternalLink, Play, Tv, Users } from 'lucide-react';
+import { ExternalLink, Play, Tv, Users, Trophy } from 'lucide-react';
 import { format } from 'date-fns';
+import { useAuth } from '@/contexts/AuthContext';
+import { getUserRankingsForMeet, saveRanking } from '@/services/rankings';
+import RankingList from '@/components/rankings/RankingList';
 
 export default function MeetDetailPage() {
   const { slug } = useParams();
+  const { isAuthenticated } = useAuth();
   const [meet, setMeet] = useState<any>(null);
   const [events, setEvents] = useState<any[]>([]);
   const [entriesByEvent, setEntriesByEvent] = useState<Record<string, any[]>>({});
   const [hasBroadcast, setHasBroadcast] = useState(false);
+  const [rankingMode, setRankingMode] = useState<Record<string, boolean>>({});
+  const [savedRankings, setSavedRankings] = useState<Record<string, string[]>>({});
 
   const loadMeetData = useCallback(async () => {
     if (!slug) return;
@@ -35,6 +41,10 @@ export default function MeetDetailPage() {
       })
     );
     setEntriesByEvent(newEntries);
+
+    // Load saved rankings
+    const rankings = await getUserRankingsForMeet(meetData.id);
+    setSavedRankings(rankings);
 
     // Check for active broadcast
     const { data: bc } = await supabase
@@ -66,6 +76,19 @@ export default function MeetDetailPage() {
     if (place === 2) return '🥈';
     if (place === 3) return '🥉';
     return '';
+  };
+
+  const toggleRankingMode = (eventId: string) => {
+    if (!isAuthenticated) {
+      window.location.href = '/login';
+      return;
+    }
+    setRankingMode(prev => ({ ...prev, [eventId]: !prev[eventId] }));
+  };
+
+  const handleSaveRanking = async (eventId: string, rankedAthleteIds: string[]) => {
+    await saveRanking(eventId, rankedAthleteIds);
+    setSavedRankings(prev => ({ ...prev, [eventId]: rankedAthleteIds }));
   };
 
   return (
@@ -146,6 +169,9 @@ export default function MeetDetailPage() {
         <Accordion type="multiple" className="space-y-2">
           {events.map(evt => {
             const entries = entriesByEvent[evt.id] || [];
+            const isRanking = rankingMode[evt.id];
+            const hasSavedPicks = !!savedRankings[evt.id]?.length;
+
             return (
               <AccordionItem key={evt.id} value={evt.id} className="border rounded-lg px-4">
                 <AccordionTrigger className="hover:no-underline">
@@ -153,6 +179,11 @@ export default function MeetDetailPage() {
                     <Badge variant="outline" className="text-xs font-mono">{genderLabel(evt.gender)}</Badge>
                     <span className="font-semibold">{evt.name}</span>
                     {evt.round && <span className="text-sm text-muted-foreground">— {evt.round}</span>}
+                    {hasSavedPicks && (
+                      <Badge className="bg-amber-100 text-amber-700 text-[10px] border-0">
+                        <Trophy className="h-3 w-3 mr-0.5" /> Picks
+                      </Badge>
+                    )}
                     <Badge className={`ml-auto mr-4 ${statusColor(evt.status)}`}>{evt.status.replace('_', ' ')}</Badge>
                     <span className="text-xs text-muted-foreground flex items-center gap-1">
                       <Users className="h-3 w-3" /> {entries.length}
@@ -163,34 +194,59 @@ export default function MeetDetailPage() {
                   {entries.length === 0 ? (
                     <p className="text-sm text-muted-foreground py-2">No entries yet.</p>
                   ) : (
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-sm">
-                        <thead>
-                          <tr className="border-b text-left text-muted-foreground">
-                            <th className="py-2 pr-3 w-12">#</th>
-                            <th className="py-2 pr-3">Athlete</th>
-                            <th className="py-2 pr-3 w-12"></th>
-                            <th className="py-2 pr-3">Team</th>
-                            <th className="py-2 pr-3 font-mono">Result</th>
-                            <th className="py-2 w-12"></th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {entries.map(entry => (
-                            <tr key={entry.id} className={`border-b last:border-0 ${entry.place && entry.place <= 3 ? 'bg-amber-50/50' : ''}`}>
-                              <td className="py-2.5 pr-3 font-medium">{medalEmoji(entry.place)} {entry.place || '–'}</td>
-                              <td className="py-2.5 pr-3 font-medium">{entry.athletes?.full_name}</td>
-                              <td className="py-2.5 pr-3">{entry.athletes?.country_flag}</td>
-                              <td className="py-2.5 pr-3 text-muted-foreground">{entry.athletes?.team}</td>
-                              <td className="py-2.5 pr-3 font-mono font-medium">{entry.result || '–'}</td>
-                              <td className="py-2.5">
-                                {entry.is_pb && <Badge className="bg-emerald-100 text-emerald-700 text-[10px]">PB</Badge>}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
+                    <>
+                      {/* Toggle button */}
+                      <div className="flex justify-end mb-3">
+                        <Button
+                          size="sm"
+                          variant={isRanking ? 'default' : 'outline'}
+                          onClick={() => toggleRankingMode(evt.id)}
+                          className="text-xs"
+                        >
+                          <Trophy className="h-3.5 w-3.5 mr-1" />
+                          {isRanking ? 'View Results' : 'Rank Athletes'}
+                        </Button>
+                      </div>
+
+                      {isRanking ? (
+                        <RankingList
+                          entries={entries}
+                          savedRanking={savedRankings[evt.id] || null}
+                          isAuthenticated={isAuthenticated}
+                          onSave={(ids) => handleSaveRanking(evt.id, ids)}
+                          variant="light"
+                        />
+                      ) : (
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-sm">
+                            <thead>
+                              <tr className="border-b text-left text-muted-foreground">
+                                <th className="py-2 pr-3 w-12">#</th>
+                                <th className="py-2 pr-3">Athlete</th>
+                                <th className="py-2 pr-3 w-12"></th>
+                                <th className="py-2 pr-3">Team</th>
+                                <th className="py-2 pr-3 font-mono">Result</th>
+                                <th className="py-2 w-12"></th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {entries.map(entry => (
+                                <tr key={entry.id} className={`border-b last:border-0 ${entry.place && entry.place <= 3 ? 'bg-amber-50/50' : ''}`}>
+                                  <td className="py-2.5 pr-3 font-medium">{medalEmoji(entry.place)} {entry.place || '–'}</td>
+                                  <td className="py-2.5 pr-3 font-medium">{entry.athletes?.full_name}</td>
+                                  <td className="py-2.5 pr-3">{entry.athletes?.country_flag}</td>
+                                  <td className="py-2.5 pr-3 text-muted-foreground">{entry.athletes?.team}</td>
+                                  <td className="py-2.5 pr-3 font-mono font-medium">{entry.result || '–'}</td>
+                                  <td className="py-2.5">
+                                    {entry.is_pb && <Badge className="bg-emerald-100 text-emerald-700 text-[10px]">PB</Badge>}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </>
                   )}
                 </AccordionContent>
               </AccordionItem>
