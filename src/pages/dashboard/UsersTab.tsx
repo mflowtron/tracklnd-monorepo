@@ -1,9 +1,12 @@
 import { useEffect, useState, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { fetchWithRetry } from '@/lib/supabase-fetch';
 import { Card, CardContent } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Skeleton } from '@/components/ui/skeleton';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import DeleteConfirmDialog from '@/components/dashboard/DeleteConfirmDialog';
 
@@ -13,16 +16,30 @@ export default function UsersTab() {
   const [confirmUserId, setConfirmUserId] = useState<string | null>(null);
   const [pendingRole, setPendingRole] = useState<string | null>(null);
   const [changing, setChanging] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
 
   const loadData = useCallback(async () => {
-    const [{ data: p }, { data: r }] = await Promise.all([
-      supabase.from('profiles').select('*').order('created_at', { ascending: false }),
-      supabase.from('user_roles').select('*'),
+    setLoading(true);
+    setError(false);
+    const [profilesResult, rolesResult] = await Promise.all([
+      fetchWithRetry(() => supabase.from('profiles').select('*').order('created_at', { ascending: false })),
+      fetchWithRetry(() => supabase.from('user_roles').select('*')),
     ]);
-    setProfiles(p || []);
+    if (profilesResult.error || rolesResult.error) {
+      console.error('UsersTab: failed to load data',
+        profilesResult.error?.message,
+        rolesResult.error?.message
+      );
+      setError(true);
+      setLoading(false);
+      return;
+    }
+    setProfiles(profilesResult.data || []);
     const map: Record<string, string> = {};
-    r?.forEach(role => { map[role.user_id] = role.role; });
+    rolesResult.data?.forEach(role => { map[role.user_id] = role.role; });
     setRoles(map);
+    setLoading(false);
   }, []);
 
   useEffect(() => { loadData(); }, [loadData]);
@@ -47,16 +64,30 @@ export default function UsersTab() {
 
   const admins = profiles.filter(p => roles[p.user_id] === 'admin').length;
 
+  if (error && !loading) {
+    return (
+      <div>
+        <h2 className="text-2xl font-bold mb-6">Users</h2>
+        <div className="flex flex-col items-center justify-center min-h-[30vh] gap-4">
+          <p className="text-muted-foreground">Something went wrong loading users.</p>
+          <Button onClick={loadData} variant="outline" size="sm">
+            <RefreshCw className="h-4 w-4 mr-2" /> Try Again
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div>
       <h2 className="text-2xl font-bold mb-6">Users</h2>
       <div className="grid grid-cols-3 gap-4 mb-6">
-        <Card><CardContent className="pt-4 pb-3"><p className="text-2xl font-bold">{profiles.length}</p><p className="text-xs text-muted-foreground">Total Users</p></CardContent></Card>
-        <Card><CardContent className="pt-4 pb-3"><p className="text-2xl font-bold">{admins}</p><p className="text-xs text-muted-foreground">Admins</p></CardContent></Card>
-        <Card><CardContent className="pt-4 pb-3"><p className="text-2xl font-bold">{profiles.length - admins}</p><p className="text-xs text-muted-foreground">Viewers</p></CardContent></Card>
+        <Card><CardContent className="pt-4 pb-3">{loading ? <Skeleton className="h-8 w-12 mb-1" /> : <p className="text-2xl font-bold">{profiles.length}</p>}<p className="text-xs text-muted-foreground">Total Users</p></CardContent></Card>
+        <Card><CardContent className="pt-4 pb-3">{loading ? <Skeleton className="h-8 w-12 mb-1" /> : <p className="text-2xl font-bold">{admins}</p>}<p className="text-xs text-muted-foreground">Admins</p></CardContent></Card>
+        <Card><CardContent className="pt-4 pb-3">{loading ? <Skeleton className="h-8 w-12 mb-1" /> : <p className="text-2xl font-bold">{profiles.length - admins}</p>}<p className="text-xs text-muted-foreground">Viewers</p></CardContent></Card>
       </div>
       <div className="space-y-2">
-        {profiles.map(p => {
+        {loading ? [1, 2, 3].map(i => <Skeleton key={i} className="h-14 w-full rounded-lg" />) : profiles.map(p => {
           const role = roles[p.user_id] || 'viewer';
           const initials = p.display_name ? p.display_name.split(' ').map((w: string) => w[0]).join('').toUpperCase().slice(0, 2) : '?';
           return (

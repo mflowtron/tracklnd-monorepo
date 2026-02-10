@@ -1,10 +1,12 @@
 import { useEffect, useState, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { fetchWithRetry } from '@/lib/supabase-fetch';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Skeleton } from '@/components/ui/skeleton';
 import { format } from 'date-fns';
-import { Plus, Pencil, Trash2 } from 'lucide-react';
+import { Plus, Pencil, Trash2, RefreshCw } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 import type { Tables } from '@/integrations/supabase/types';
@@ -19,10 +21,22 @@ export default function ContentTab() {
   const [editing, setEditing] = useState<Tables<'works'> | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
 
   const loadWorks = useCallback(async () => {
-    const { data } = await supabase.from('works').select('*').order('published_at', { ascending: false });
-    setWorks(data || []);
+    setLoading(true);
+    setError(false);
+    const { data, error: err } = await fetchWithRetry(
+      () => supabase.from('works').select('*').order('published_at', { ascending: false })
+    );
+    if (err) {
+      console.error('ContentTab: failed to load works:', err.message);
+      setError(true);
+    } else {
+      setWorks(data || []);
+    }
+    setLoading(false);
   }, []);
 
   useEffect(() => { loadWorks(); }, [loadWorks]);
@@ -41,6 +55,20 @@ export default function ContentTab() {
   const filtered = works.filter(w => (typeFilter === 'all' || w.work_type === typeFilter) && (statusFilter === 'all' || w.status === statusFilter));
   const counts = { all: works.length, short: works.filter(w => w.work_type === 'short').length, work: works.filter(w => w.work_type === 'work').length, feature: works.filter(w => w.work_type === 'feature').length, published: works.filter(w => w.status === 'published').length, draft: works.filter(w => w.status === 'draft').length };
 
+  if (error && !loading) {
+    return (
+      <div>
+        <h2 className="text-2xl font-bold mb-6">Content</h2>
+        <div className="flex flex-col items-center justify-center min-h-[30vh] gap-4">
+          <p className="text-muted-foreground">Something went wrong loading content.</p>
+          <Button onClick={loadWorks} variant="outline" size="sm">
+            <RefreshCw className="h-4 w-4 mr-2" /> Try Again
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
@@ -48,10 +76,10 @@ export default function ContentTab() {
         <Button size="sm" onClick={() => { setEditing(null); setFormOpen(true); }}><Plus className="h-4 w-4 mr-1" /> Create Work</Button>
       </div>
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
-        <Card><CardContent className="pt-4 pb-3"><p className="text-2xl font-bold">{counts.all}</p><p className="text-xs text-muted-foreground">Total</p></CardContent></Card>
-        <Card><CardContent className="pt-4 pb-3"><p className="text-2xl font-bold">{counts.published}</p><p className="text-xs text-muted-foreground">Published</p></CardContent></Card>
-        <Card><CardContent className="pt-4 pb-3"><p className="text-2xl font-bold">{counts.draft}</p><p className="text-xs text-muted-foreground">Drafts</p></CardContent></Card>
-        <Card><CardContent className="pt-4 pb-3"><p className="text-2xl font-bold">{counts.short}/{counts.work}/{counts.feature}</p><p className="text-xs text-muted-foreground">S / W / F</p></CardContent></Card>
+        <Card><CardContent className="pt-4 pb-3">{loading ? <Skeleton className="h-8 w-12 mb-1" /> : <p className="text-2xl font-bold">{counts.all}</p>}<p className="text-xs text-muted-foreground">Total</p></CardContent></Card>
+        <Card><CardContent className="pt-4 pb-3">{loading ? <Skeleton className="h-8 w-12 mb-1" /> : <p className="text-2xl font-bold">{counts.published}</p>}<p className="text-xs text-muted-foreground">Published</p></CardContent></Card>
+        <Card><CardContent className="pt-4 pb-3">{loading ? <Skeleton className="h-8 w-12 mb-1" /> : <p className="text-2xl font-bold">{counts.draft}</p>}<p className="text-xs text-muted-foreground">Drafts</p></CardContent></Card>
+        <Card><CardContent className="pt-4 pb-3">{loading ? <Skeleton className="h-8 w-12 mb-1" /> : <p className="text-2xl font-bold">{counts.short}/{counts.work}/{counts.feature}</p>}<p className="text-xs text-muted-foreground">S / W / F</p></CardContent></Card>
       </div>
       <div className="flex gap-2 mb-6 flex-wrap">
         {['all', 'short', 'work', 'feature'].map(f => (
@@ -63,7 +91,7 @@ export default function ContentTab() {
         ))}
       </div>
       <div className="space-y-2">
-        {filtered.map(w => (
+        {loading ? [1, 2, 3].map(i => <Skeleton key={i} className="h-16 w-full rounded-lg" />) : filtered.map(w => (
           <div key={w.id} className="flex items-center gap-4 p-3 rounded-lg border bg-background hover:shadow-sm transition-shadow">
             <img src={w.cover_image_url} alt="" className="w-12 h-12 rounded object-cover flex-shrink-0" />
             <div className="flex-1 min-w-0">
