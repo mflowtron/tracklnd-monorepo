@@ -29,29 +29,41 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   const fetchProfile = async (userId: string) => {
-    const { data } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('user_id', userId)
-      .maybeSingle();
-    setProfile(data);
+    try {
+      const { data } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('user_id', userId)
+        .maybeSingle();
+      setProfile(data);
+    } catch (err) {
+      console.error('Failed to fetch profile:', err);
+    }
   };
 
   const fetchRole = async (userId: string) => {
-    const { data } = await supabase
-      .from('user_roles')
-      .select('role')
-      .eq('user_id', userId);
-    setIsAdmin(data?.some(r => r.role === 'admin') ?? false);
+    try {
+      const { data } = await supabase
+        .from('user_roles')
+        .select('role')
+        .eq('user_id', userId);
+      setIsAdmin(data?.some(r => r.role === 'admin') ?? false);
+    } catch (err) {
+      console.error('Failed to fetch role:', err);
+    }
   };
 
   useEffect(() => {
+    // Safety timeout: ensure loading resolves even if requests hang
+    const timeout = setTimeout(() => {
+      setLoading(false);
+    }, 8000);
+
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
       const u = session?.user ?? null;
       setUser(u);
       if (u) {
-        await fetchProfile(u.id);
-        await fetchRole(u.id);
+        await Promise.allSettled([fetchProfile(u.id), fetchRole(u.id)]);
       } else {
         setProfile(null);
         setIsAdmin(false);
@@ -63,13 +75,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const u = session?.user ?? null;
       setUser(u);
       if (u) {
-        fetchProfile(u.id);
-        fetchRole(u.id);
+        Promise.allSettled([fetchProfile(u.id), fetchRole(u.id)]).then(() => setLoading(false));
+      } else {
+        setLoading(false);
       }
+    }).catch((err) => {
+      console.error('Failed to get session:', err);
       setLoading(false);
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      clearTimeout(timeout);
+      subscription.unsubscribe();
+    };
   }, []);
 
   const login = async (email: string, password: string) => {
