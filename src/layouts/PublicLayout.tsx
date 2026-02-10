@@ -111,7 +111,7 @@ export default function PublicLayout() {
       </header>
 
       {/* Main content */}
-      <main className="flex-1">
+      <main className="flex-1 text-[15.5px]">
         <Outlet />
       </main>
 
