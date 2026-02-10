@@ -1,102 +1,57 @@
 
 
-# Spreadsheet-Style Entry Editor with Smart Athlete Matching
+# Fix Entry Spreadsheet CRUD Issues
 
-## Overview
+## Problem 1: Can't type in the name field after "Add Row"
 
-Replace the current one-at-a-time entry dialog with an inline, Excel-like table editor for each event. Admins can rapidly add and edit multiple entries in a grid, and athlete names are matched intelligently against the existing athlete database to prevent duplicates and typos.
+The `Input` is wrapped inside `PopoverTrigger asChild`, which means Radix Popover intercepts click/focus events on the input to toggle the popover. When you click the input on a new empty row:
+- The Popover captures the click to open itself
+- But `suggestions` is empty (no search text yet) and `showCreate` is false, so `PopoverContent` doesn't render
+- The Popover still steals focus from the input, preventing typing
 
-## How It Works
+**Fix**: Decouple the Input from `PopoverTrigger`. Instead of using `asChild` on the Input, use a separate hidden anchor for the Popover and control it purely via the `open` state. The Input becomes a normal controlled input that opens the popover programmatically when text is typed.
 
-### The Spreadsheet Table
+Alternatively (simpler approach): Keep the Popover but always render the `PopoverContent` when `openPopoverIdx === idx`, even if there are no suggestions. Show a "No matches" or "Type to search" message. This ensures the Popover has content to render when it opens, and the input won't lose focus. However, the cleaner fix is to separate the trigger.
 
-When you expand an event in the meet dashboard, the existing entries table becomes editable. Below the existing rows, empty rows are available for adding new entries. Each row has these columns:
+**Chosen approach**: Remove `PopoverTrigger asChild` from the Input. Instead, wrap the input in a `div` and use `PopoverAnchor` (from Radix) to position the popover relative to the input, while controlling open/close purely through state. This way the input is a plain input that always accepts typing, and the popover floats below it when suggestions exist.
 
-| Athlete Name | Flag | Team | Place | Result | PB | Actions |
-|---|---|---|---|---|---|---|
-| (type-ahead input) | auto-filled | auto-filled | editable | editable | toggle | save/delete |
+## Problem 2: Can't delete entries
 
-- **Athlete Name column**: A text input with a dropdown suggestion list. As you type, it fuzzy-searches the athlete database and shows the best matches ranked by similarity.
-- **Flag / Team columns**: Auto-populated when an athlete is selected from suggestions. Read-only to prevent inconsistency.
-- **Place / Result / PB columns**: Directly editable inline.
-- Each row has a Save button (checkmark) that commits that single row, and a Delete/Remove button.
+Two potential causes:
 
-### Smart Athlete Matching
+1. **RLS policies are fine** -- the migration shows admin delete policy exists on `event_entries`, so this should work if the user is logged in as admin.
 
-When the admin types in the Athlete Name field:
+2. **The real issue**: After a successful delete, `onDataChanged()` calls `loadData()` which re-fetches everything. The `useEffect` that syncs `rows` from `entries` then runs and resets the rows. This should work. However, if the delete call itself is failing silently (no toast appearing), the problem could be that the Supabase client request is hanging (the same timeout issue from earlier). The `handleDeleteEntry` function does not use `fetchWithRetry`.
 
-1. The input searches all athletes in the database using a case-insensitive substring match
-2. Results are ranked by match quality -- exact matches first, then "starts with", then "contains"
-3. Each suggestion shows the athlete's flag, name, and team so the admin can confirm they're picking the right person
-4. If no match is found, a "Create new athlete" option appears at the bottom of the dropdown, which lets the admin type the new name and add it to the athletes table on the fly
-5. This prevents duplicates because you always see existing athletes first before creating a new one
+3. **Another possibility**: The delete button click might be intercepted by the Popover or accordion, preventing the handler from firing.
 
-### Workflow
+**Fix**: 
+- Wrap Supabase calls in `handleDeleteEntry` and `handleSaveRow` with the `fetchWithRetry` utility for resilience
+- Add a confirmation step or at minimum ensure the click handler fires (add console.log for debugging)
+- Ensure the delete/save buttons are not inside any element that could swallow click events
 
-1. Admin expands an event accordion
-2. Sees existing entries in an editable table
-3. Clicks "+ Add Row" to append a blank row at the bottom
-4. Types an athlete name -- suggestions appear instantly
-5. Selects an existing athlete (or creates a new one)
-6. Fills in place, result, toggles PB
-7. Clicks the checkmark to save that row
-8. Repeats for more entries -- no dialog opening/closing needed
+## Technical Changes
 
-## Technical Details
+### File: `src/components/dashboard/EntrySpreadsheet.tsx`
 
-### New Component: `src/components/dashboard/EntrySpreadsheet.tsx`
+1. **Replace `PopoverTrigger asChild` pattern with `PopoverAnchor`**:
+   - Import `PopoverAnchor` from Radix (it's part of `@radix-ui/react-popover`)
+   - The Input sits inside a `PopoverAnchor` wrapper instead of `PopoverTrigger`
+   - Remove the `PopoverTrigger` entirely -- the popover opens/closes purely via the `open` prop on `Popover`
+   - This lets the Input behave as a normal text input while the popover dropdown appears below it
 
-A self-contained component that receives `eventId` and the current `entries` array, and renders the editable table.
+2. **Always show PopoverContent when popover is open**:
+   - Remove the conditional `{(suggestions.length > 0 || showCreate) && ...}` around `PopoverContent`
+   - Instead, always render `PopoverContent` and show "No results" or the create option inside it
+   - Close the popover when there's no text typed (empty input)
 
-**State per row:**
-- `athleteSearch`: string (the text typed into the name field)
-- `selectedAthlete`: object or null (the matched/selected athlete)
-- `place`: string
-- `result`: string
-- `isPb`: boolean
-- `isNew`: boolean (unsaved row vs existing entry)
-- `isSaving`: boolean
+3. **Add error handling to delete/save**:
+   - Add `console.log` statements to `handleDeleteEntry` to trace execution
+   - Ensure the toast fires on both success and error paths
 
-**Athlete search logic (client-side):**
-- On component mount, fetch all athletes once (the database has a manageable number)
-- Filter in-memory as the user types using case-insensitive substring matching
-- Sort results: exact match first, then startsWith, then includes
-- Show top 8 suggestions in a dropdown (using Popover + Command from existing UI components)
+4. **Fix key stability for new rows**:
+   - Use a stable unique ID for new rows (e.g., generate a random client-side ID in `createEmptyRow()`) instead of relying on array index
 
-**Inline create athlete:**
-- If no suggestions match, show "Create [typed name] as new athlete"
-- On click: insert into `athletes` table with defaults (US flag, no team), then select the newly created athlete for that row
-- The admin can later edit the athlete's full details from the Athletes tab
+### File: `src/components/ui/popover.tsx` (minor)
 
-**Save logic:**
-- Each row saves independently via upsert to `event_entries`
-- For new rows: `insert` with `athlete_id`, `event_id`, `place`, `result`, `is_pb`
-- For existing rows: `update` by entry `id`
-- On success: toast + mark row as saved
-- On error: toast with error message, row stays editable
-
-### Modified: `src/pages/dashboard/MeetDetailDashboard.tsx`
-
-- Replace the entries `<table>` block (lines 306-344) with the new `<EntrySpreadsheet>` component
-- Remove the `EntryFormDialog` usage and related state (`entryFormOpen`, `entryEventId`, `editingEntry`)
-- Keep the "Add Entry" button but wire it to append a new row in the spreadsheet instead of opening a dialog
-- Keep delete confirmation dialog for entry deletion
-
-### Kept: `src/components/dashboard/EntryFormDialog.tsx`
-
-Keep this file for now (no breaking changes), but it will no longer be imported by `MeetDetailDashboard`.
-
-### UI Components Used (all existing)
-
-- `Input` for editable cells
-- `Switch` for PB toggle
-- `Popover` + `Command`/`CommandInput`/`CommandItem` for the athlete search dropdown
-- `Button` for save/delete/add-row actions
-- `Badge` for PB indicator
-- `toast` from sonner for feedback
-
-### Files Changed
-
-- `src/components/dashboard/EntrySpreadsheet.tsx` -- **new** (main spreadsheet component)
-- `src/pages/dashboard/MeetDetailDashboard.tsx` -- **modified** (swap table for spreadsheet)
-
+- Export `PopoverAnchor` from the existing popover component file (it's already available from `@radix-ui/react-popover` but not currently exported)
