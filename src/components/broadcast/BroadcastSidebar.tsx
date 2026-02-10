@@ -2,6 +2,7 @@ import { Accordion } from '@/components/ui/accordion';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Pause } from 'lucide-react';
+import { useAuth } from '@/contexts/AuthContext';
 import EventLineupCard from './EventLineupCard';
 
 interface BroadcastSidebarProps {
@@ -12,6 +13,7 @@ interface BroadcastSidebarProps {
 }
 
 export default function BroadcastSidebar({ events, entriesByEvent, paused, onTogglePause }: BroadcastSidebarProps) {
+  const { isAuthenticated } = useAuth();
   // Auto-open in_progress events
   const defaultOpen = events.filter(e => e.status === 'in_progress').map(e => e.id);
 
@@ -45,7 +47,7 @@ export default function BroadcastSidebar({ events, entriesByEvent, paused, onTog
         ) : (
           <Accordion type="multiple" defaultValue={defaultOpen} className="space-y-2">
             {events.map(evt => (
-              <EventLineupCard key={evt.id} event={evt} entries={entriesByEvent[evt.id] || []} />
+              <EventLineupCard key={evt.id} event={evt} entries={entriesByEvent[evt.id] || []} isAuthenticated={isAuthenticated} />
             ))}
           </Accordion>
         )}
