@@ -49,15 +49,10 @@ export default function WorkDetailPage() {
           <p className="text-xl text-muted-foreground leading-relaxed mb-8">{work.summary}</p>
         )}
 
-        <div className="prose prose-lg max-w-none">
-          {work.body.split('\n\n').map((paragraph: string, i: number) => (
-            <p key={i} className="mb-4 leading-relaxed text-foreground/80">
-              {paragraph.split('**').map((part: string, j: number) =>
-                j % 2 === 1 ? <strong key={j}>{part}</strong> : part
-              )}
-            </p>
-          ))}
-        </div>
+        <div
+          className="prose prose-lg max-w-none [&_a]:text-primary [&_img]:rounded-lg"
+          dangerouslySetInnerHTML={{ __html: work.body }}
+        />
 
         {work.tags && work.tags.length > 0 && (
           <div className="flex flex-wrap gap-2 mt-10 pt-6 border-t border-border">
