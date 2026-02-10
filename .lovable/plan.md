@@ -1,121 +1,102 @@
 
 
-# Fix Silent Supabase Request Hangs
+# Spreadsheet-Style Entry Editor with Smart Athlete Matching
 
-## Problem
+## Overview
 
-The Supabase JS client's `fetch` calls are silently hanging -- they never resolve or reject. This means:
-- `.then()` callbacks never fire, so `loading` stays `true` forever
-- No console errors appear because nothing throws
-- Pages show skeleton loaders indefinitely
+Replace the current one-at-a-time entry dialog with an inline, Excel-like table editor for each event. Admins can rapidly add and edit multiple entries in a grid, and athlete names are matched intelligently against the existing athlete database to prevent duplicates and typos.
 
-## Root Cause
+## How It Works
 
-The `fetch()` API has no built-in timeout. When the backend instance is cold or the connection stalls, `fetch` hangs indefinitely. The Supabase JS client does not add timeouts by default.
+### The Spreadsheet Table
 
-## Solution
+When you expand an event in the meet dashboard, the existing entries table becomes editable. Below the existing rows, empty rows are available for adding new entries. Each row has these columns:
 
-Create a wrapper utility that adds `AbortController` timeouts to the Supabase client's `fetch`, and add retry logic to all data-fetching pages.
+| Athlete Name | Flag | Team | Place | Result | PB | Actions |
+|---|---|---|---|---|---|---|
+| (type-ahead input) | auto-filled | auto-filled | editable | editable | toggle | save/delete |
 
-### 1. Create `src/lib/supabase-fetch.ts` -- Timeout Wrapper
+- **Athlete Name column**: A text input with a dropdown suggestion list. As you type, it fuzzy-searches the athlete database and shows the best matches ranked by similarity.
+- **Flag / Team columns**: Auto-populated when an athlete is selected from suggestions. Read-only to prevent inconsistency.
+- **Place / Result / PB columns**: Directly editable inline.
+- Each row has a Save button (checkmark) that commits that single row, and a Delete/Remove button.
 
-A utility function that wraps any Supabase query promise with an `AbortSignal` timeout. If a request takes longer than 10 seconds, it aborts and throws a clear error. Also includes a `fetchWithRetry` helper that retries up to 2 times with exponential backoff.
+### Smart Athlete Matching
 
-### 2. Update `src/integrations/supabase/client.ts` -- NO CHANGE
+When the admin types in the Athlete Name field:
 
-This file is auto-generated and must not be edited. Instead, the Supabase client supports a custom `fetch` option. However since we cannot edit client.ts, we will wrap at the call site level.
+1. The input searches all athletes in the database using a case-insensitive substring match
+2. Results are ranked by match quality -- exact matches first, then "starts with", then "contains"
+3. Each suggestion shows the athlete's flag, name, and team so the admin can confirm they're picking the right person
+4. If no match is found, a "Create new athlete" option appears at the bottom of the dropdown, which lets the admin type the new name and add it to the athletes table on the fly
+5. This prevents duplicates because you always see existing athletes first before creating a new one
 
-### 3. Update `src/pages/public/HomePage.tsx`
+### Workflow
 
-- Wrap each Supabase query call with a `Promise.race` against a timeout
-- Add `console.log('HomePage: fetching data...')` at effect start for debuggability
-- Add `console.log('HomePage: fetch complete')` after `Promise.allSettled` resolves
-- If all fetches timeout/fail, show an error state with a "Retry" button instead of permanent skeletons
-
-### 4. Update `src/pages/public/MeetsPage.tsx`
-
-- Same timeout wrapping pattern
-- Add retry button on failure
-- Add debug logging
-
-### 5. Update `src/pages/public/MeetDetailPage.tsx`
-
-- Same timeout wrapping pattern
-- Already has error state UI from previous changes, ensure it triggers on timeout
-
-### 6. Update `src/pages/dashboard/OverviewPage.tsx`
-
-- Same timeout wrapping pattern
-- Add retry button on failure
-
-### 7. Update `src/contexts/AuthContext.tsx`
-
-- Wrap `getSession()` with a timeout (it currently has an 8s safety timeout for the loading state, but `getSession()` itself can hang silently)
-- Wrap `fetchProfile()` and `fetchRole()` with timeouts
-- Add debug logging: `console.log('Auth: initializing...')`, `console.log('Auth: session resolved')`
+1. Admin expands an event accordion
+2. Sees existing entries in an editable table
+3. Clicks "+ Add Row" to append a blank row at the bottom
+4. Types an athlete name -- suggestions appear instantly
+5. Selects an existing athlete (or creates a new one)
+6. Fills in place, result, toggles PB
+7. Clicks the checkmark to save that row
+8. Repeats for more entries -- no dialog opening/closing needed
 
 ## Technical Details
 
-### Timeout Utility (`src/lib/supabase-fetch.ts`)
+### New Component: `src/components/dashboard/EntrySpreadsheet.tsx`
 
-```typescript
-export function withTimeout<T>(promise: PromiseLike<T>, ms = 10000): Promise<T> {
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error(`Request timed out after ${ms}ms`)), ms);
-    promise.then(
-      (val) => { clearTimeout(timer); resolve(val); },
-      (err) => { clearTimeout(timer); reject(err); }
-    );
-  });
-}
+A self-contained component that receives `eventId` and the current `entries` array, and renders the editable table.
 
-export async function fetchWithRetry<T>(
-  fn: () => PromiseLike<T>,
-  retries = 2,
-  timeoutMs = 10000
-): Promise<T> {
-  for (let attempt = 0; attempt <= retries; attempt++) {
-    try {
-      return await withTimeout(fn(), timeoutMs);
-    } catch (err) {
-      if (attempt === retries) throw err;
-      await new Promise(r => setTimeout(r, 1000 * (attempt + 1)));
-    }
-  }
-  throw new Error('Unreachable');
-}
-```
+**State per row:**
+- `athleteSearch`: string (the text typed into the name field)
+- `selectedAthlete`: object or null (the matched/selected athlete)
+- `place`: string
+- `result`: string
+- `isPb`: boolean
+- `isNew`: boolean (unsaved row vs existing entry)
+- `isSaving`: boolean
 
-### Usage Pattern in Pages
+**Athlete search logic (client-side):**
+- On component mount, fetch all athletes once (the database has a manageable number)
+- Filter in-memory as the user types using case-insensitive substring matching
+- Sort results: exact match first, then startsWith, then includes
+- Show top 8 suggestions in a dropdown (using Popover + Command from existing UI components)
 
-Before:
-```typescript
-supabase.from('meets').select('*').order(...)
-  .then(({ data }) => setMeets(data || []))
-```
+**Inline create athlete:**
+- If no suggestions match, show "Create [typed name] as new athlete"
+- On click: insert into `athletes` table with defaults (US flag, no team), then select the newly created athlete for that row
+- The admin can later edit the athlete's full details from the Athletes tab
 
-After:
-```typescript
-fetchWithRetry(() => supabase.from('meets').select('*').order(...))
-  .then(({ data }) => setMeets(data || []))
-  .catch(err => { console.error('Failed:', err); setError(true); })
-  .finally(() => setLoading(false));
-```
+**Save logic:**
+- Each row saves independently via upsert to `event_entries`
+- For new rows: `insert` with `athlete_id`, `event_id`, `place`, `result`, `is_pb`
+- For existing rows: `update` by entry `id`
+- On success: toast + mark row as saved
+- On error: toast with error message, row stays editable
 
-### Error/Retry UI
+### Modified: `src/pages/dashboard/MeetDetailDashboard.tsx`
 
-Each page gets an error state with a retry button:
-```
-Something went wrong loading this content.
-[Try Again]
-```
+- Replace the entries `<table>` block (lines 306-344) with the new `<EntrySpreadsheet>` component
+- Remove the `EntryFormDialog` usage and related state (`entryFormOpen`, `entryEventId`, `editingEntry`)
+- Keep the "Add Entry" button but wire it to append a new row in the spreadsheet instead of opening a dialog
+- Keep delete confirmation dialog for entry deletion
 
-Clicking "Try Again" re-runs the data fetch.
+### Kept: `src/components/dashboard/EntryFormDialog.tsx`
 
-### Files Modified
-- `src/lib/supabase-fetch.ts` (new)
-- `src/pages/public/HomePage.tsx`
-- `src/pages/public/MeetsPage.tsx`
-- `src/pages/public/MeetDetailPage.tsx`
-- `src/pages/dashboard/OverviewPage.tsx`
-- `src/contexts/AuthContext.tsx`
+Keep this file for now (no breaking changes), but it will no longer be imported by `MeetDetailDashboard`.
+
+### UI Components Used (all existing)
+
+- `Input` for editable cells
+- `Switch` for PB toggle
+- `Popover` + `Command`/`CommandInput`/`CommandItem` for the athlete search dropdown
+- `Button` for save/delete/add-row actions
+- `Badge` for PB indicator
+- `toast` from sonner for feedback
+
+### Files Changed
+
+- `src/components/dashboard/EntrySpreadsheet.tsx` -- **new** (main spreadsheet component)
+- `src/pages/dashboard/MeetDetailDashboard.tsx` -- **modified** (swap table for spreadsheet)
+
