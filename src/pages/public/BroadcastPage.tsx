@@ -3,6 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Skeleton } from '@/components/ui/skeleton';
 import { ArrowLeft, Calendar, MapPin, PanelRight, ListOrdered } from 'lucide-react';
 import { format } from 'date-fns';
 import MuxPlayer from '@mux/mux-player-react';
@@ -83,8 +84,23 @@ export default function BroadcastPage() {
 
   if (loading) {
     return (
-      <div className="h-screen bg-[hsl(220,20%,5%)] flex items-center justify-center">
-        <div className="text-white/60 text-lg">Loading broadcast…</div>
+      <div className="h-screen bg-[hsl(220,20%,5%)] flex flex-col overflow-hidden">
+        {/* Header skeleton */}
+        <header className="flex items-center justify-between px-4 sm:px-6 py-3 bg-black/40 border-b border-white/5 shrink-0">
+          <div className="flex items-center gap-3">
+            <Skeleton className="h-8 w-16 bg-white/10 rounded" />
+            <Skeleton className="h-5 w-40 bg-white/10 rounded" />
+            <Skeleton className="h-5 w-14 bg-white/10 rounded-full" />
+          </div>
+          <Skeleton className="h-8 w-8 bg-white/10 rounded" />
+        </header>
+        {/* Player skeleton */}
+        <div className="flex-1 flex items-center justify-center p-4 sm:p-6">
+          <div className="w-full max-w-full">
+            <Skeleton className="w-full bg-white/5 rounded-xl" style={{ aspectRatio: '16/9' }} />
+            <Skeleton className="h-3 w-48 bg-white/10 mt-2 rounded" />
+          </div>
+        </div>
       </div>
     );
   }

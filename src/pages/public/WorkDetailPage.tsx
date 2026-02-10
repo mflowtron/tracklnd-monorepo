@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { Badge } from '@/components/ui/badge';
+import { Skeleton } from '@/components/ui/skeleton';
 import { ArrowLeft } from 'lucide-react';
 import { format } from 'date-fns';
 
@@ -24,7 +25,33 @@ export default function WorkDetailPage() {
     });
   }, [slug]);
 
-  if (!work) return <div className="flex items-center justify-center min-h-[50vh] text-muted-foreground">Loading...</div>;
+  if (!work) return (
+    <div>
+      {/* Hero skeleton */}
+      <div className="relative h-[50vh] min-h-[400px]">
+        <Skeleton className="absolute inset-0 w-full h-full rounded-none" />
+      </div>
+      {/* Article skeleton */}
+      <div className="max-w-3xl mx-auto px-4 sm:px-6 -mt-24 relative z-10">
+        <div className="flex items-center gap-3 mb-4">
+          <Skeleton className="h-5 w-16 rounded-full" />
+          <Skeleton className="h-4 w-28" />
+        </div>
+        <Skeleton className="h-10 w-3/4 mb-3" />
+        <Skeleton className="h-10 w-1/2 mb-6" />
+        <Skeleton className="h-5 w-full mb-2" />
+        <Skeleton className="h-5 w-full mb-2" />
+        <Skeleton className="h-5 w-2/3 mb-8" />
+        <div className="space-y-3">
+          <Skeleton className="h-4 w-full" />
+          <Skeleton className="h-4 w-full" />
+          <Skeleton className="h-4 w-5/6" />
+          <Skeleton className="h-4 w-full" />
+          <Skeleton className="h-4 w-3/4" />
+        </div>
+      </div>
+    </div>
+  );
 
   return (
     <div>

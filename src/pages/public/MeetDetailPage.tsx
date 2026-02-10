@@ -3,6 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Skeleton } from '@/components/ui/skeleton';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { ExternalLink, Play, Tv, Users, Trophy, RefreshCw } from 'lucide-react';
 import { format } from 'date-fns';
@@ -83,7 +84,31 @@ export default function MeetDetailPage() {
 
   useEffect(() => { loadMeetData(); }, [loadMeetData]);
 
-  if (loading) return <div className="flex items-center justify-center min-h-[50vh] text-muted-foreground">Loading...</div>;
+  if (loading) return (
+    <div>
+      {/* Hero skeleton */}
+      <section className="relative h-[50vh] min-h-[400px] flex items-end overflow-hidden">
+        <Skeleton className="absolute inset-0 w-full h-full rounded-none" />
+        <div className="relative z-10 max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 pb-10">
+          <Skeleton className="h-6 w-20 mb-3 rounded-full" />
+          <Skeleton className="h-12 w-3/4 sm:w-1/2 mb-3" />
+          <Skeleton className="h-5 w-48 mb-1" />
+          <Skeleton className="h-4 w-36" />
+        </div>
+      </section>
+      {/* Content skeleton */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+        <Skeleton className="h-5 w-full max-w-3xl mb-3" />
+        <Skeleton className="h-5 w-2/3 max-w-3xl mb-10" />
+        <Skeleton className="h-8 w-32 mb-6" />
+        <div className="space-y-2">
+          {[1, 2, 3, 4].map(i => (
+            <Skeleton key={i} className="h-14 w-full rounded-lg" />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
 
   if (error) return (
     <div className="flex flex-col items-center justify-center min-h-[50vh] gap-4">

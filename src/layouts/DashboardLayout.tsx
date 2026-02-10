@@ -2,7 +2,7 @@ import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import {
   LayoutDashboard, Calendar, FileText, UserCog, ImageIcon, Users,
-  Menu, X, LogOut, User,
+  Menu, X, LogOut, User, Loader2,
 } from 'lucide-react';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
@@ -10,7 +10,7 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Badge } from '@/components/ui/badge';
-import { useState } from 'react';
+import { Suspense, useState } from 'react';
 import { cn } from '@/lib/utils';
 
 const sidebarItems = [
@@ -170,7 +170,13 @@ export default function DashboardLayout() {
 
         {/* Page content */}
         <main className="flex-1 overflow-auto p-4 sm:p-6 text-[15px]">
-          <Outlet />
+          <Suspense fallback={
+            <div className="flex min-h-[50vh] items-center justify-center">
+              <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            </div>
+          }>
+            <Outlet />
+          </Suspense>
         </main>
       </div>
     </div>
