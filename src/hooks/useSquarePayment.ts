@@ -23,10 +23,25 @@ function loadSquareScript(): Promise<void> {
       resolve();
       return;
     }
-    const existing = document.querySelector(`script[src*="square.js"]`);
+    const existing = document.querySelector(`script[src*="square.js"]`) as HTMLScriptElement | null;
     if (existing) {
-      existing.addEventListener('load', () => resolve());
-      existing.addEventListener('error', () => reject(new Error('Failed to load Square SDK')));
+      // If the script already finished loading, check immediately
+      if (window.Square) {
+        resolve();
+        return;
+      }
+      // If the script tag exists but may have already finished (loaded or errored),
+      // add a timeout fallback so we don't hang forever
+      let settled = false;
+      existing.addEventListener('load', () => { if (!settled) { settled = true; resolve(); } });
+      existing.addEventListener('error', () => { if (!settled) { settled = true; reject(new Error('Failed to load Square SDK')); } });
+      setTimeout(() => {
+        if (!settled) {
+          settled = true;
+          if (window.Square) resolve();
+          else reject(new Error('Square SDK load timed out'));
+        }
+      }, 5000);
       return;
     }
     const script = document.createElement('script');

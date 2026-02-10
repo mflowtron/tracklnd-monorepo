@@ -191,13 +191,15 @@ serve(async (req) => {
       });
     }
 
-    // For PPV: grant meet access
+    // For PPV: grant meet access (reset revoked_at in case of re-purchase after refund)
     if (payment_type === 'ppv') {
       const { error: accessError } = await supabase.from('user_meet_access').upsert({
         user_id: user.id,
         meet_id: config.meet_id,
         access_type: 'ppv',
         square_payment_id: paymentId,
+        granted_at: new Date().toISOString(),
+        revoked_at: null,
       }, { onConflict: 'user_id,meet_id' });
 
       if (accessError) {

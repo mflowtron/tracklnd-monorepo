@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { useSquarePayment } from '@/hooks/useSquarePayment';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -20,9 +20,14 @@ const CARD_CONTAINER_ID = 'contribution-card-container';
 export default function DirectContributionModal({ open, onOpenChange, configId }: DirectContributionModalProps) {
   const { initializeCard, tokenizeAndPay, isLoading, error } = useSquarePayment();
   const [amount, setAmount] = useState('');
-  const [eventAllocId, setEventAllocId] = useState<string>('');
+  const [eventAllocId, setEventAllocId] = useState<string>('overall');
   const [eventAllocations, setEventAllocations] = useState<(Tables<'event_purse_allocations'> & { events?: { name: string } })[]>([]);
   const [cardReady, setCardReady] = useState(false);
+
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    return () => { mountedRef.current = false; };
+  }, []);
 
   useEffect(() => {
     if (!open) {
@@ -35,13 +40,14 @@ export default function DirectContributionModal({ open, onOpenChange, configId }
         .from('event_purse_allocations')
         .select('*, events(name)')
         .eq('config_id', configId);
-      setEventAllocations(data || []);
+      if (mountedRef.current) setEventAllocations(data || []);
     })();
 
     // Initialize card form after DOM renders
     setTimeout(async () => {
+      if (!mountedRef.current) return;
       await initializeCard(CARD_CONTAINER_ID);
-      setCardReady(true);
+      if (mountedRef.current) setCardReady(true);
     }, 200);
   }, [open, configId, initializeCard]);
 
@@ -58,14 +64,14 @@ export default function DirectContributionModal({ open, onOpenChange, configId }
       configId,
       'direct',
       parsedAmount,
-      eventAllocId || undefined,
+      eventAllocId !== 'overall' ? eventAllocId : undefined,
     );
 
     if (result.success) {
       toast.success('Thank you for your contribution!');
       onOpenChange(false);
       setAmount('');
-      setEventAllocId('');
+      setEventAllocId('overall');
     } else {
       toast.error(result.error || 'Payment failed');
     }
@@ -102,7 +108,7 @@ export default function DirectContributionModal({ open, onOpenChange, configId }
                 <SelectValue placeholder="Overall Prize Purse" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">Overall Prize Purse</SelectItem>
+                <SelectItem value="overall">Overall Prize Purse</SelectItem>
                 {eventAllocations.map(a => (
                   <SelectItem key={a.id} value={a.id}>
                     {(a as any).events?.name || 'Event'}

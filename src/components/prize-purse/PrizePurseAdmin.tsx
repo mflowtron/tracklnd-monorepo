@@ -44,24 +44,27 @@ export default function PrizePurseAdmin({ meetId, events }: PrizePurseAdminProps
   const loadAllocations = useCallback(async () => {
     if (!config) return;
 
-    const [eventResult, placeResult] = await Promise.all([
-      supabase
-        .from('event_purse_allocations')
-        .select('*, events(name)')
-        .eq('config_id', config.id)
-        .order('created_at'),
-      supabase
-        .from('place_purse_allocations')
-        .select('*')
-        .in(
-          'event_allocation_id',
-          (await supabase.from('event_purse_allocations').select('id').eq('config_id', config.id))
-            .data?.map(a => a.id) || ['__none__']
-        )
-        .order('place'),
-    ]);
+    // Fetch event allocations first, then use their IDs to fetch place allocations
+    const eventResult = await supabase
+      .from('event_purse_allocations')
+      .select('*, events(name)')
+      .eq('config_id', config.id)
+      .order('created_at');
 
+    const eventIds = eventResult.data?.map(a => a.id) || [];
     setEventAllocations(eventResult.data || []);
+
+    if (eventIds.length === 0) {
+      setPlaceAllocations([]);
+      return;
+    }
+
+    const placeResult = await supabase
+      .from('place_purse_allocations')
+      .select('*')
+      .in('event_allocation_id', eventIds)
+      .order('place');
+
     setPlaceAllocations(placeResult.data || []);
   }, [config]);
 

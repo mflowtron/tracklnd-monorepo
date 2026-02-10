@@ -1,4 +1,4 @@
-import { useEffect, useCallback, useState } from 'react';
+import { useEffect, useCallback, useState, useRef } from 'react';
 import { usePursePolling } from '@/hooks/usePursePolling';
 import { useSquarePayment } from '@/hooks/useSquarePayment';
 import AnimatedPurseAmount from './AnimatedPurseAmount';
@@ -20,13 +20,19 @@ export default function PPVPurchaseGate({ meet, config, onAccessGranted }: PPVPu
   const { initializeCard, tokenizeAndPay, isLoading, error } = useSquarePayment();
   const [showCard, setShowCard] = useState(false);
   const [cardReady, setCardReady] = useState(false);
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    return () => { mountedRef.current = false; };
+  }, []);
 
   const handleShowCard = useCallback(async () => {
     setShowCard(true);
     // Wait for DOM element to exist
     setTimeout(async () => {
+      if (!mountedRef.current) return;
       await initializeCard(CARD_CONTAINER_ID);
-      setCardReady(true);
+      if (mountedRef.current) setCardReady(true);
     }, 100);
   }, [initializeCard]);
 
