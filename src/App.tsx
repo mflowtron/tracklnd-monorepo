@@ -21,6 +21,7 @@ import MeetsTab from "@/pages/dashboard/MeetsTab";
 import ContentTab from "@/pages/dashboard/ContentTab";
 import UsersTab from "@/pages/dashboard/UsersTab";
 import BannersTab from "@/pages/dashboard/BannersTab";
+import AthletesTab from "@/pages/dashboard/AthletesTab";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -53,6 +54,7 @@ const App = () => (
               <Route path="overview" element={<OverviewPage />} />
               <Route path="meets" element={<MeetsTab />} />
               <Route path="content" element={<ContentTab />} />
+              <Route path="athletes" element={<AthletesTab />} />
               <Route path="users" element={<AdminRoute><UsersTab /></AdminRoute>} />
               <Route path="banners" element={<AdminRoute><BannersTab /></AdminRoute>} />
             </Route>

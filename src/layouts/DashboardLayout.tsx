@@ -1,7 +1,7 @@
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import {
-  LayoutDashboard, Calendar, FileText, UserCog, ImageIcon,
+  LayoutDashboard, Calendar, FileText, UserCog, ImageIcon, Users,
   Menu, X, LogOut, User,
 } from 'lucide-react';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
@@ -17,6 +17,7 @@ const sidebarItems = [
   { label: 'Overview', to: '/dashboard/overview', icon: LayoutDashboard },
   { label: 'Meets', to: '/dashboard/meets', icon: Calendar },
   { label: 'Content', to: '/dashboard/content', icon: FileText },
+  { label: 'Athletes', to: '/dashboard/athletes', icon: Users },
   { label: 'Users', to: '/dashboard/users', icon: UserCog, adminOnly: true },
   { label: 'Banners', to: '/dashboard/banners', icon: ImageIcon, adminOnly: true },
 ];
@@ -25,6 +26,7 @@ const pageTitles: Record<string, string> = {
   '/dashboard/overview': 'Overview',
   '/dashboard/meets': 'Meets',
   '/dashboard/content': 'Content',
+  '/dashboard/athletes': 'Athletes',
   '/dashboard/users': 'Users',
   '/dashboard/banners': 'Banners',
 };
