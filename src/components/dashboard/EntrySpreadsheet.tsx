@@ -1,11 +1,11 @@
-import { useEffect, useState, useRef, useCallback } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { fetchWithRetry } from '@/lib/supabase-fetch';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Command, CommandEmpty, CommandGroup, CommandItem, CommandList } from '@/components/ui/command';
+import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover';
+import { Command, CommandGroup, CommandItem, CommandList } from '@/components/ui/command';
 import { Check, Plus, Trash2, UserPlus, Loader2, ClipboardPaste } from 'lucide-react';
 import { toast } from 'sonner';
 import { Textarea } from '@/components/ui/textarea';
@@ -55,6 +55,7 @@ function entryToRow(entry: Entry): RowState {
 
 function createEmptyRow(): RowState {
   return {
+    id: crypto.randomUUID(),
     athleteSearch: '',
     selectedAthlete: null,
     place: '',
@@ -160,22 +161,21 @@ export default function EntrySpreadsheet({ eventId, entries, onDataChanged }: Pr
       is_pb: row.isPb,
     };
 
-    let error;
-    if (row.isNew) {
-      ({ error } = await supabase.from('event_entries').insert(payload));
-    } else {
-      ({ error } = await supabase.from('event_entries').update(payload).eq('id', row.id!));
+    try {
+      if (row.isNew) {
+        const { error } = await fetchWithRetry(() => supabase.from('event_entries').insert(payload));
+        if (error) throw error;
+      } else {
+        const { error } = await fetchWithRetry(() => supabase.from('event_entries').update(payload).eq('id', row.id!));
+        if (error) throw error;
+      }
+      toast.success(row.isNew ? 'Entry added' : 'Entry updated');
+      onDataChanged();
+    } catch (err: any) {
+      toast.error('Save failed: ' + (err?.message || 'Unknown error'));
+    } finally {
+      updateRow(idx, { isSaving: false });
     }
-
-    updateRow(idx, { isSaving: false });
-
-    if (error) {
-      toast.error('Save failed: ' + error.message);
-      return;
-    }
-
-    toast.success(row.isNew ? 'Entry added' : 'Entry updated');
-    onDataChanged();
   };
 
   const handleDeleteEntry = async (idx: number) => {
@@ -184,13 +184,14 @@ export default function EntrySpreadsheet({ eventId, entries, onDataChanged }: Pr
       removeNewRow(idx);
       return;
     }
-    const { error } = await supabase.from('event_entries').delete().eq('id', row.id!);
-    if (error) {
-      toast.error('Delete failed: ' + error.message);
-      return;
+    try {
+      const { error } = await fetchWithRetry(() => supabase.from('event_entries').delete().eq('id', row.id!));
+      if (error) throw error;
+      toast.success('Entry deleted');
+      onDataChanged();
+    } catch (err: any) {
+      toast.error('Delete failed: ' + (err?.message || 'Unknown error'));
     }
-    toast.success('Entry deleted');
-    onDataChanged();
   };
 
   const medalEmoji = (place: string) => {
@@ -299,13 +300,14 @@ export default function EntrySpreadsheet({ eventId, entries, onDataChanged }: Pr
                 <tr key={row.id || `new-${idx}`} className="border-b last:border-0">
                   {/* Athlete Name */}
                   <td className="py-1.5 pr-2">
-                    <Popover open={openPopoverIdx === idx} onOpenChange={(o) => setOpenPopoverIdx(o ? idx : null)}>
-                      <PopoverTrigger asChild>
+                    <Popover open={openPopoverIdx === idx && row.athleteSearch.trim().length > 0} onOpenChange={(o) => { if (!o) setOpenPopoverIdx(null); }}>
+                      <PopoverAnchor asChild>
                         <Input
                           value={row.athleteSearch}
                           onChange={(e) => {
                             updateRow(idx, { athleteSearch: e.target.value, selectedAthlete: null });
                             if (e.target.value.trim().length > 0) setOpenPopoverIdx(idx);
+                            else setOpenPopoverIdx(null);
                           }}
                           onFocus={() => {
                             if (row.athleteSearch.trim().length > 0) setOpenPopoverIdx(idx);
@@ -313,38 +315,37 @@ export default function EntrySpreadsheet({ eventId, entries, onDataChanged }: Pr
                           placeholder="Type athlete name…"
                           className="h-8 text-sm"
                         />
-                      </PopoverTrigger>
-                      {(suggestions.length > 0 || showCreate) && (
-                        <PopoverContent className="p-0 w-[300px]" align="start" onOpenAutoFocus={(e) => e.preventDefault()}>
-                          <Command>
-                            <CommandList>
-                              {suggestions.length > 0 && (
-                                <CommandGroup>
-                                  {suggestions.map(a => (
-                                    <CommandItem
-                                      key={a.id}
-                                      onSelect={() => handleSelectAthlete(idx, a)}
-                                      className="flex items-center gap-2"
-                                    >
-                                      <span>{a.country_flag}</span>
-                                      <span className="font-medium">{a.full_name}</span>
-                                      {a.team && <span className="text-xs text-muted-foreground ml-auto">{a.team}</span>}
-                                    </CommandItem>
-                                  ))}
-                                </CommandGroup>
-                              )}
-                              {showCreate && (
-                                <CommandGroup>
-                                  <CommandItem onSelect={() => handleCreateAthlete(idx, row.athleteSearch)} className="flex items-center gap-2">
-                                    <UserPlus className="h-3.5 w-3.5" />
-                                    <span>Create "<strong>{row.athleteSearch.trim()}</strong>"</span>
+                      </PopoverAnchor>
+                      <PopoverContent className="p-0 w-[300px]" align="start" onOpenAutoFocus={(e) => e.preventDefault()}>
+                        <Command>
+                          <CommandList>
+                            {suggestions.length > 0 ? (
+                              <CommandGroup>
+                                {suggestions.map(a => (
+                                  <CommandItem
+                                    key={a.id}
+                                    onSelect={() => handleSelectAthlete(idx, a)}
+                                    className="flex items-center gap-2"
+                                  >
+                                    <span>{a.country_flag}</span>
+                                    <span className="font-medium">{a.full_name}</span>
+                                    {a.team && <span className="text-xs text-muted-foreground ml-auto">{a.team}</span>}
                                   </CommandItem>
-                                </CommandGroup>
-                              )}
-                            </CommandList>
-                          </Command>
-                        </PopoverContent>
-                      )}
+                                ))}
+                              </CommandGroup>
+                            ) : showCreate ? (
+                              <CommandGroup>
+                                <CommandItem onSelect={() => handleCreateAthlete(idx, row.athleteSearch)} className="flex items-center gap-2">
+                                  <UserPlus className="h-3.5 w-3.5" />
+                                  <span>Create "<strong>{row.athleteSearch.trim()}</strong>"</span>
+                                </CommandItem>
+                              </CommandGroup>
+                            ) : (
+                              <div className="p-3 text-sm text-muted-foreground text-center">No matches found</div>
+                            )}
+                          </CommandList>
+                        </Command>
+                      </PopoverContent>
                     </Popover>
                   </td>
 
@@ -399,7 +400,7 @@ export default function EntrySpreadsheet({ eventId, entries, onDataChanged }: Pr
                         disabled={row.isSaving || !row.selectedAthlete}
                         title="Save row"
                       >
-                        {row.isSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5 text-emerald-600" />}
+                        {row.isSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5 text-primary" />}
                       </Button>
                       <Button
                         variant="ghost"
