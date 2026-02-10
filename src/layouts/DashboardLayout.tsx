@@ -85,7 +85,7 @@ export default function DashboardLayout() {
         <div className="p-4 border-t border-sidebar-border">
           <div className="flex items-center gap-3">
             <Avatar className="h-8 w-8">
-              <AvatarFallback className="text-xs bg-primary text-primary-foreground">{initials}</AvatarFallback>
+              <AvatarFallback className="text-xs bg-primary text-primary-foreground">{initials !== '?' ? initials : <User className="h-4 w-4" />}</AvatarFallback>
             </Avatar>
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium truncate">{profile?.display_name || 'User'}</p>
@@ -150,7 +150,7 @@ export default function DashboardLayout() {
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" size="icon" className="rounded-full">
                   <Avatar className="h-8 w-8">
-                    <AvatarFallback className="text-xs bg-primary text-primary-foreground">{initials}</AvatarFallback>
+                    <AvatarFallback className="text-xs bg-primary text-primary-foreground">{initials !== '?' ? initials : <User className="h-4 w-4" />}</AvatarFallback>
                   </Avatar>
                 </Button>
               </DropdownMenuTrigger>
