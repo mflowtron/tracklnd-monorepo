@@ -1,10 +1,10 @@
 import { useEffect, useState, useCallback } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, Link } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
-import { ExternalLink, Tv, Users } from 'lucide-react';
+import { ExternalLink, Play, Tv, Users } from 'lucide-react';
 import { format } from 'date-fns';
 
 export default function MeetDetailPage() {
@@ -12,6 +12,7 @@ export default function MeetDetailPage() {
   const [meet, setMeet] = useState<any>(null);
   const [events, setEvents] = useState<any[]>([]);
   const [entriesByEvent, setEntriesByEvent] = useState<Record<string, any[]>>({});
+  const [hasBroadcast, setHasBroadcast] = useState(false);
 
   const loadMeetData = useCallback(async () => {
     if (!slug) return;
@@ -34,6 +35,15 @@ export default function MeetDetailPage() {
       })
     );
     setEntriesByEvent(newEntries);
+
+    // Check for active broadcast
+    const { data: bc } = await supabase
+      .from('broadcasts' as any)
+      .select('id')
+      .eq('meet_id', meetData.id)
+      .eq('is_active', true)
+      .limit(1);
+    setHasBroadcast((bc?.length || 0) > 0);
   }, [slug]);
 
   useEffect(() => { loadMeetData(); }, [loadMeetData]);
@@ -84,13 +94,22 @@ export default function MeetDetailPage() {
             {meet.end_date && ` – ${format(new Date(meet.end_date), 'MMMM d, yyyy')}`}
           </p>
           <p className="text-white/60">{meet.venue}, {meet.location}</p>
-          {meet.cta_label && meet.cta_url && (
-            <Button asChild size="lg" className="mt-4">
-              <a href={meet.cta_url} target="_blank" rel="noopener noreferrer">
-                {meet.cta_label} <ExternalLink className="h-4 w-4 ml-1" />
-              </a>
-            </Button>
-          )}
+          <div className="flex flex-wrap gap-3 mt-4">
+            {hasBroadcast && (
+              <Button asChild size="lg" className="bg-red-600 hover:bg-red-700 text-white">
+                <Link to={`/meets/${slug}/watch`}>
+                  <Play className="h-4 w-4 mr-1" /> Watch Broadcast
+                </Link>
+              </Button>
+            )}
+            {meet.cta_label && meet.cta_url && (
+              <Button asChild size="lg" variant={hasBroadcast ? 'outline' : 'default'} className={hasBroadcast ? 'border-white/30 text-white hover:bg-white/10' : ''}>
+                <a href={meet.cta_url} target="_blank" rel="noopener noreferrer">
+                  {meet.cta_label} <ExternalLink className="h-4 w-4 ml-1" />
+                </a>
+              </Button>
+            )}
+          </div>
         </div>
       </section>
 

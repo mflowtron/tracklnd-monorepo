@@ -1,1 +1,4 @@
 project_id = "drooxdzcemoibkplprdp"
+
+[functions.mux-assets]
+verify_jwt = false

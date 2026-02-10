@@ -88,6 +88,53 @@ export type Database = {
           },
         ]
       }
+      broadcasts: {
+        Row: {
+          created_at: string
+          id: string
+          is_active: boolean
+          meet_id: string | null
+          mux_asset_id: string | null
+          mux_playback_id: string
+          status: string
+          thumbnail_url: string | null
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          meet_id?: string | null
+          mux_asset_id?: string | null
+          mux_playback_id: string
+          status?: string
+          thumbnail_url?: string | null
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          meet_id?: string | null
+          mux_asset_id?: string | null
+          mux_playback_id?: string
+          status?: string
+          thumbnail_url?: string | null
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "broadcasts_meet_id_fkey"
+            columns: ["meet_id"]
+            isOneToOne: false
+            referencedRelation: "meets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       event_entries: {
         Row: {
           athlete_id: string
