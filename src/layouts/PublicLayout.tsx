@@ -1,6 +1,6 @@
 import { Link, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
-import { Instagram, Mail, MapPin, Menu, X } from 'lucide-react';
+import { Instagram, Mail, MapPin, Menu, X, User } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -56,7 +56,7 @@ export default function PublicLayout() {
                   <Button variant="ghost" size="icon" className="rounded-full">
                     <Avatar className="h-8 w-8">
                       <AvatarFallback className="text-xs bg-primary text-primary-foreground">
-                        {initials}
+                        {initials !== '?' ? initials : <User className="h-4 w-4" />}
                       </AvatarFallback>
                     </Avatar>
                   </Button>
