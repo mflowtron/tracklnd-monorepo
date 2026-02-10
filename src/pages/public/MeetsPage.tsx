@@ -1,9 +1,12 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { format } from 'date-fns';
+import { RefreshCw } from 'lucide-react';
+import { fetchWithRetry } from '@/lib/supabase-fetch';
 
 const filters = ['all', 'upcoming', 'live', 'archived'] as const;
 
@@ -11,12 +14,19 @@ export default function MeetsPage() {
   const [meets, setMeets] = useState<any[]>([]);
   const [filter, setFilter] = useState<string>('all');
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
 
-  useEffect(() => {
-    supabase.from('meets').select('*').order('start_date', { ascending: false })
-      .then(({ data }) => { setMeets(data || []); setLoading(false); })
-      .then(undefined, (err) => { console.error('Failed to fetch meets:', err); setLoading(false); });
+  const loadData = useCallback(() => {
+    console.log('MeetsPage: fetching data...');
+    setLoading(true);
+    setError(false);
+    fetchWithRetry(() => supabase.from('meets').select('*').order('start_date', { ascending: false }))
+      .then(({ data }) => { setMeets(data || []); console.log('MeetsPage: fetch complete'); })
+      .catch(err => { console.error('MeetsPage: fetch failed:', err); setError(true); })
+      .finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => { loadData(); }, [loadData]);
 
   const filtered = filter === 'all' ? meets : meets.filter(m => m.status === filter);
 
@@ -48,7 +58,14 @@ export default function MeetsPage() {
         ))}
       </div>
 
-      {loading ? (
+      {error && !loading ? (
+        <div className="flex flex-col items-center justify-center min-h-[30vh] gap-4">
+          <p className="text-muted-foreground">Something went wrong loading meets.</p>
+          <Button onClick={loadData} variant="outline" size="sm">
+            <RefreshCw className="h-4 w-4 mr-2" /> Try Again
+          </Button>
+        </div>
+      ) : loading ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
           {[1, 2, 3].map(i => (
             <div key={i} className="rounded-lg border border-border overflow-hidden">

@@ -1,12 +1,14 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Link } from 'react-router-dom';
 import { format } from 'date-fns';
-import { Calendar, FileText, Radio, TrendingUp } from 'lucide-react';
+import { Calendar, FileText, Radio, TrendingUp, RefreshCw } from 'lucide-react';
+import { fetchWithRetry } from '@/lib/supabase-fetch';
 
 export default function OverviewPage() {
   const { profile } = useAuth();
@@ -14,16 +16,26 @@ export default function OverviewPage() {
   const [upcomingEvents, setUpcomingEvents] = useState<any[]>([]);
   const [recentWorks, setRecentWorks] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
 
-  useEffect(() => {
+  const loadData = useCallback(() => {
+    console.log('OverviewPage: fetching data...');
+    setLoading(true);
+    setError(false);
     Promise.allSettled([
-      supabase.from('meets').select('status').then(({ data }) => {
+      fetchWithRetry(() => supabase.from('meets').select('status')).then(({ data }) => {
         setStats(s => ({ ...s, live: data?.filter(m => m.status === 'live').length || 0, upcoming: data?.filter(m => m.status === 'upcoming').length || 0 }));
       }),
-      supabase.from('events').select('*, meets(name)').order('scheduled_time', { ascending: true }).limit(5).then(({ data }) => { setUpcomingEvents(data || []); setStats(s => ({ ...s, events: data?.length || 0 })); }),
-      supabase.from('works').select('*').eq('status', 'published').order('published_at', { ascending: false }).limit(5).then(({ data }) => { setRecentWorks(data || []); setStats(s => ({ ...s, works: data?.length || 0 })); }),
-    ]).catch(err => console.error('Overview fetch error:', err)).finally(() => setLoading(false));
+      fetchWithRetry(() => supabase.from('events').select('*, meets(name)').order('scheduled_time', { ascending: true }).limit(5)).then(({ data }) => { setUpcomingEvents(data || []); setStats(s => ({ ...s, events: data?.length || 0 })); }),
+      fetchWithRetry(() => supabase.from('works').select('*').eq('status', 'published').order('published_at', { ascending: false }).limit(5)).then(({ data }) => { setRecentWorks(data || []); setStats(s => ({ ...s, works: data?.length || 0 })); }),
+    ]).then(results => {
+      const allFailed = results.every(r => r.status === 'rejected');
+      if (allFailed) setError(true);
+      console.log('OverviewPage: fetch complete', results.map(r => r.status));
+    }).finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => { loadData(); }, [loadData]);
 
   const statCards = [
     { label: 'Live Meets', value: stats.live, icon: Radio, live: true },
@@ -31,6 +43,20 @@ export default function OverviewPage() {
     { label: 'Total Events', value: stats.events, icon: TrendingUp },
     { label: 'Published Works', value: stats.works, icon: FileText },
   ];
+
+  if (error && !loading) {
+    return (
+      <div>
+        <h2 className="text-2xl font-bold mb-6">Welcome back, {profile?.display_name || 'there'}!</h2>
+        <div className="flex flex-col items-center justify-center min-h-[30vh] gap-4">
+          <p className="text-muted-foreground">Something went wrong loading dashboard data.</p>
+          <Button onClick={loadData} variant="outline" size="sm">
+            <RefreshCw className="h-4 w-4 mr-2" /> Try Again
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div>

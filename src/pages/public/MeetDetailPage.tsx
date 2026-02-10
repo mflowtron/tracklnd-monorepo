@@ -4,11 +4,12 @@ import { supabase } from '@/integrations/supabase/client';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
-import { ExternalLink, Play, Tv, Users, Trophy } from 'lucide-react';
+import { ExternalLink, Play, Tv, Users, Trophy, RefreshCw } from 'lucide-react';
 import { format } from 'date-fns';
 import { useAuth } from '@/contexts/AuthContext';
 import { getUserRankingsForMeet, saveRanking } from '@/services/rankings';
 import RankingList from '@/components/rankings/RankingList';
+import { fetchWithRetry } from '@/lib/supabase-fetch';
 
 export default function MeetDetailPage() {
   const { slug } = useParams();
@@ -18,63 +19,76 @@ export default function MeetDetailPage() {
   const [entriesByEvent, setEntriesByEvent] = useState<Record<string, any[]>>({});
   const [hasBroadcast, setHasBroadcast] = useState(false);
   const [pickCounts, setPickCounts] = useState<Record<string, number>>({});
-  
   const [savedRankings, setSavedRankings] = useState<Record<string, string[]>>({});
-
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const loadMeetData = useCallback(async () => {
     if (!slug) return;
+    setLoading(true);
+    setError(null);
+    console.log('MeetDetailPage: fetching data...');
     try {
-      const { data: meetData, error: meetError } = await supabase.from('meets').select('*').eq('slug', slug).maybeSingle();
+      const { data: meetData, error: meetError } = await fetchWithRetry(() =>
+        supabase.from('meets').select('*').eq('slug', slug).maybeSingle()
+      );
       if (meetError) throw meetError;
       setMeet(meetData);
-      if (!meetData) return;
+      if (!meetData) { setLoading(false); return; }
 
-      const { data: evts } = await supabase.from('events').select('*').eq('meet_id', meetData.id).order('sort_order');
+      const { data: evts } = await fetchWithRetry(() =>
+        supabase.from('events').select('*').eq('meet_id', meetData.id).order('sort_order')
+      );
       setEvents(evts || []);
 
       const newEntries: Record<string, any[]> = {};
       await Promise.all(
         (evts || []).map(async (evt) => {
-          const { data: entries } = await supabase
-            .from('event_entries')
-            .select('*, athletes(*)')
-            .eq('event_id', evt.id)
-            .order('place', { ascending: true, nullsFirst: false });
+          const { data: entries } = await fetchWithRetry(() =>
+            supabase.from('event_entries').select('*, athletes(*)').eq('event_id', evt.id).order('place', { ascending: true, nullsFirst: false })
+          );
           newEntries[evt.id] = entries || [];
         })
       );
       setEntriesByEvent(newEntries);
 
-      // Load saved rankings
       const rankings = await getUserRankingsForMeet(meetData.id);
       setSavedRankings(rankings);
 
-      // Load pick counts
-      const { data: counts } = await supabase.rpc('get_event_pick_counts', { meet_id_param: meetData.id });
+      const { data: counts } = await fetchWithRetry(() =>
+        supabase.rpc('get_event_pick_counts', { meet_id_param: meetData.id })
+      );
       const countsMap: Record<string, number> = {};
       (counts || []).forEach((r: any) => { countsMap[r.event_id] = Number(r.pick_count); });
       setPickCounts(countsMap);
 
-      // Check for active broadcast
-      const { data: bc } = await supabase
-        .from('broadcasts' as any)
-        .select('id')
-        .eq('meet_id', meetData.id)
-        .eq('is_active', true)
-        .limit(1);
+      const { data: bc } = await fetchWithRetry(() =>
+        supabase.from('broadcasts' as any).select('id').eq('meet_id', meetData.id).eq('is_active', true).limit(1)
+      );
       setHasBroadcast((bc?.length || 0) > 0);
+      console.log('MeetDetailPage: fetch complete');
     } catch (err) {
-      console.error('Failed to load meet data:', err);
-      setError('Failed to load meet data. Please try refreshing.');
+      console.error('MeetDetailPage: fetch failed:', err);
+      setError('Failed to load meet data. Please try again.');
+    } finally {
+      setLoading(false);
     }
   }, [slug]);
 
   useEffect(() => { loadMeetData(); }, [loadMeetData]);
 
-  if (error) return <div className="flex items-center justify-center min-h-[50vh] text-destructive">{error}</div>;
-  if (!meet) return <div className="flex items-center justify-center min-h-[50vh] text-muted-foreground">Loading...</div>;
+  if (loading) return <div className="flex items-center justify-center min-h-[50vh] text-muted-foreground">Loading...</div>;
+
+  if (error) return (
+    <div className="flex flex-col items-center justify-center min-h-[50vh] gap-4">
+      <p className="text-destructive">{error}</p>
+      <Button onClick={loadMeetData} variant="outline" size="sm">
+        <RefreshCw className="h-4 w-4 mr-2" /> Try Again
+      </Button>
+    </div>
+  );
+
+  if (!meet) return <div className="flex items-center justify-center min-h-[50vh] text-muted-foreground">Meet not found.</div>;
 
   const statusColor = (s: string) => {
     if (s === 'live') return 'bg-red-500 text-white';
@@ -86,15 +100,6 @@ export default function MeetDetailPage() {
   };
 
   const genderLabel = (g: string) => g === 'men' ? 'M' : g === 'women' ? 'W' : 'X';
-
-  const medalEmoji = (place: number | null) => {
-    if (place === 1) return '🥇';
-    if (place === 2) return '🥈';
-    if (place === 3) return '🥉';
-    return '';
-  };
-
-  
 
   const handleSaveRanking = async (eventId: string, rankedAthleteIds: string[]) => {
     await saveRanking(eventId, rankedAthleteIds);

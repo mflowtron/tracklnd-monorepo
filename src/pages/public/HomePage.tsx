@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
-import { ArrowRight, Mail } from 'lucide-react';
+import { ArrowRight, Mail, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -10,6 +10,7 @@ import { format } from 'date-fns';
 import useEmblaCarousel from 'embla-carousel-react';
 import Autoplay from 'embla-carousel-autoplay';
 import { toast } from 'sonner';
+import { fetchWithRetry } from '@/lib/supabase-fetch';
 
 export default function HomePage() {
   const [banner, setBanner] = useState<any>(null);
@@ -18,18 +19,28 @@ export default function HomePage() {
   const [recentWorks, setRecentWorks] = useState<any[]>([]);
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
 
   const [shortsRef] = useEmblaCarousel({ loop: true, align: 'start' }, [Autoplay({ delay: 4000 })]);
   const [worksRef] = useEmblaCarousel({ loop: false, align: 'start', slidesToScroll: 1 });
 
-  useEffect(() => {
+  const loadData = useCallback(() => {
+    console.log('HomePage: fetching data...');
+    setLoading(true);
+    setError(false);
     Promise.allSettled([
-      supabase.from('banners').select('*').eq('placement', 'homepage').eq('is_active', true).limit(1).maybeSingle().then(({ data }) => setBanner(data)),
-      supabase.from('works').select('*').eq('work_type', 'short').eq('status', 'published').order('published_at', { ascending: false }).limit(6).then(({ data }) => setShorts(data || [])),
-      supabase.from('meets').select('*').in('status', ['upcoming', 'live']).order('start_date', { ascending: true }).limit(4).then(({ data }) => setUpcomingMeets(data || [])),
-      supabase.from('works').select('*').in('work_type', ['work', 'feature']).eq('status', 'published').order('published_at', { ascending: false }).limit(6).then(({ data }) => setRecentWorks(data || [])),
-    ]).catch(err => console.error('HomePage fetch error:', err)).finally(() => setLoading(false));
+      fetchWithRetry(() => supabase.from('banners').select('*').eq('placement', 'homepage').eq('is_active', true).limit(1).maybeSingle()).then(({ data }) => setBanner(data)),
+      fetchWithRetry(() => supabase.from('works').select('*').eq('work_type', 'short').eq('status', 'published').order('published_at', { ascending: false }).limit(6)).then(({ data }) => setShorts(data || [])),
+      fetchWithRetry(() => supabase.from('meets').select('*').in('status', ['upcoming', 'live']).order('start_date', { ascending: true }).limit(4)).then(({ data }) => setUpcomingMeets(data || [])),
+      fetchWithRetry(() => supabase.from('works').select('*').in('work_type', ['work', 'feature']).eq('status', 'published').order('published_at', { ascending: false }).limit(6)).then(({ data }) => setRecentWorks(data || [])),
+    ]).then(results => {
+      const allFailed = results.every(r => r.status === 'rejected');
+      if (allFailed) setError(true);
+      console.log('HomePage: fetch complete', results.map(r => r.status));
+    }).finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => { loadData(); }, [loadData]);
 
   const handleSubscribe = async () => {
     if (!email) return;
@@ -48,6 +59,17 @@ export default function HomePage() {
     if (s === 'upcoming') return 'bg-primary text-primary-foreground';
     return 'bg-muted text-muted-foreground';
   };
+
+  if (error && !loading) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[50vh] gap-4">
+        <p className="text-muted-foreground">Something went wrong loading this content.</p>
+        <Button onClick={loadData} variant="outline" size="sm">
+          <RefreshCw className="h-4 w-4 mr-2" /> Try Again
+        </Button>
+      </div>
+    );
+  }
 
   if (loading) {
     return (
