@@ -15,9 +15,15 @@ export default function WorksPage() {
 
   useEffect(() => {
     setLoading(true);
-    supabase.from('works').select('*').eq('status', 'published').order('published_at', { ascending: false })
-      .then(({ data }) => setWorks(data || []))
-      .finally(() => setLoading(false));
+    const load = async () => {
+      try {
+        const { data } = await supabase.from('works').select('*').eq('status', 'published').order('published_at', { ascending: false });
+        setWorks(data || []);
+      } finally {
+        setLoading(false);
+      }
+    };
+    load();
   }, []);
 
   const filtered = activeType === 'all' ? works : works.filter(w => w.work_type === activeType);

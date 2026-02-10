@@ -177,6 +177,45 @@ export type Database = {
           },
         ]
       }
+      event_purse_allocations: {
+        Row: {
+          config_id: string
+          created_at: string
+          event_id: string
+          id: string
+          meet_pct: number
+        }
+        Insert: {
+          config_id: string
+          created_at?: string
+          event_id: string
+          id?: string
+          meet_pct: number
+        }
+        Update: {
+          config_id?: string
+          created_at?: string
+          event_id?: string
+          id?: string
+          meet_pct?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "event_purse_allocations_config_id_fkey"
+            columns: ["config_id"]
+            isOneToOne: false
+            referencedRelation: "prize_purse_configs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "event_purse_allocations_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: false
+            referencedRelation: "events"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       event_rankings: {
         Row: {
           event_id: string
@@ -328,6 +367,94 @@ export type Database = {
         }
         Relationships: []
       }
+      place_purse_allocations: {
+        Row: {
+          created_at: string
+          event_allocation_id: string
+          event_pct: number
+          id: string
+          place: number
+        }
+        Insert: {
+          created_at?: string
+          event_allocation_id: string
+          event_pct: number
+          id?: string
+          place: number
+        }
+        Update: {
+          created_at?: string
+          event_allocation_id?: string
+          event_pct?: number
+          id?: string
+          place?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "place_purse_allocations_event_allocation_id_fkey"
+            columns: ["event_allocation_id"]
+            isOneToOne: false
+            referencedRelation: "event_purse_allocations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      prize_purse_configs: {
+        Row: {
+          contributions_close_at: string | null
+          contributions_open_at: string | null
+          created_at: string
+          id: string
+          is_active: boolean
+          is_finalized: boolean
+          meet_id: string
+          places_paid: number
+          ppv_purse_mode: string
+          ppv_purse_percentage: number | null
+          ppv_purse_static_amount: number | null
+          ppv_ticket_price: number
+          updated_at: string
+        }
+        Insert: {
+          contributions_close_at?: string | null
+          contributions_open_at?: string | null
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          is_finalized?: boolean
+          meet_id: string
+          places_paid?: number
+          ppv_purse_mode: string
+          ppv_purse_percentage?: number | null
+          ppv_purse_static_amount?: number | null
+          ppv_ticket_price?: number
+          updated_at?: string
+        }
+        Update: {
+          contributions_close_at?: string | null
+          contributions_open_at?: string | null
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          is_finalized?: boolean
+          meet_id?: string
+          places_paid?: number
+          ppv_purse_mode?: string
+          ppv_purse_percentage?: number | null
+          ppv_purse_static_amount?: number | null
+          ppv_ticket_price?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "prize_purse_configs_meet_id_fkey"
+            columns: ["meet_id"]
+            isOneToOne: true
+            referencedRelation: "meets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           avatar_url: string | null
@@ -354,6 +481,244 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      purse_contributions: {
+        Row: {
+          config_id: string
+          created_at: string
+          event_allocation_id: string | null
+          gross_amount: number
+          id: string
+          purse_amount: number
+          source_type: Database["public"]["Enums"]["purse_source_type"]
+          square_payment_id: string | null
+          user_id: string | null
+        }
+        Insert: {
+          config_id: string
+          created_at?: string
+          event_allocation_id?: string | null
+          gross_amount: number
+          id?: string
+          purse_amount: number
+          source_type: Database["public"]["Enums"]["purse_source_type"]
+          square_payment_id?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          config_id?: string
+          created_at?: string
+          event_allocation_id?: string | null
+          gross_amount?: number
+          id?: string
+          purse_amount?: number
+          source_type?: Database["public"]["Enums"]["purse_source_type"]
+          square_payment_id?: string | null
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "purse_contributions_config_id_fkey"
+            columns: ["config_id"]
+            isOneToOne: false
+            referencedRelation: "prize_purse_configs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "purse_contributions_event_allocation_id_fkey"
+            columns: ["event_allocation_id"]
+            isOneToOne: false
+            referencedRelation: "event_purse_allocations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      purse_refunds: {
+        Row: {
+          config_id: string
+          contribution_id: string
+          created_at: string
+          id: string
+          refund_amount: number
+          square_refund_id: string | null
+        }
+        Insert: {
+          config_id: string
+          contribution_id: string
+          created_at?: string
+          id?: string
+          refund_amount: number
+          square_refund_id?: string | null
+        }
+        Update: {
+          config_id?: string
+          contribution_id?: string
+          created_at?: string
+          id?: string
+          refund_amount?: number
+          square_refund_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "purse_refunds_config_id_fkey"
+            columns: ["config_id"]
+            isOneToOne: false
+            referencedRelation: "prize_purse_configs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "purse_refunds_contribution_id_fkey"
+            columns: ["contribution_id"]
+            isOneToOne: true
+            referencedRelation: "purse_contributions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      purse_seed_money: {
+        Row: {
+          amount: number
+          config_id: string
+          created_at: string
+          event_allocation_id: string | null
+          id: string
+          note: string | null
+          place_allocation_id: string | null
+        }
+        Insert: {
+          amount: number
+          config_id: string
+          created_at?: string
+          event_allocation_id?: string | null
+          id?: string
+          note?: string | null
+          place_allocation_id?: string | null
+        }
+        Update: {
+          amount?: number
+          config_id?: string
+          created_at?: string
+          event_allocation_id?: string | null
+          id?: string
+          note?: string | null
+          place_allocation_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "purse_seed_money_config_id_fkey"
+            columns: ["config_id"]
+            isOneToOne: false
+            referencedRelation: "prize_purse_configs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "purse_seed_money_event_allocation_id_fkey"
+            columns: ["event_allocation_id"]
+            isOneToOne: false
+            referencedRelation: "event_purse_allocations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "purse_seed_money_place_allocation_id_fkey"
+            columns: ["place_allocation_id"]
+            isOneToOne: false
+            referencedRelation: "place_purse_allocations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      purse_snapshots: {
+        Row: {
+          cached_total: number
+          config_id: string
+          contribution_count: number
+          event_allocation_id: string | null
+          id: string
+          last_updated: string
+          place_allocation_id: string | null
+          scope_type: string
+        }
+        Insert: {
+          cached_total?: number
+          config_id: string
+          contribution_count?: number
+          event_allocation_id?: string | null
+          id?: string
+          last_updated?: string
+          place_allocation_id?: string | null
+          scope_type: string
+        }
+        Update: {
+          cached_total?: number
+          config_id?: string
+          contribution_count?: number
+          event_allocation_id?: string | null
+          id?: string
+          last_updated?: string
+          place_allocation_id?: string | null
+          scope_type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "purse_snapshots_config_id_fkey"
+            columns: ["config_id"]
+            isOneToOne: false
+            referencedRelation: "prize_purse_configs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "purse_snapshots_event_allocation_id_fkey"
+            columns: ["event_allocation_id"]
+            isOneToOne: false
+            referencedRelation: "event_purse_allocations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "purse_snapshots_place_allocation_id_fkey"
+            columns: ["place_allocation_id"]
+            isOneToOne: false
+            referencedRelation: "place_purse_allocations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      user_meet_access: {
+        Row: {
+          access_type: string
+          granted_at: string
+          id: string
+          meet_id: string
+          revoked_at: string | null
+          square_payment_id: string | null
+          user_id: string
+        }
+        Insert: {
+          access_type?: string
+          granted_at?: string
+          id?: string
+          meet_id: string
+          revoked_at?: string | null
+          square_payment_id?: string | null
+          user_id: string
+        }
+        Update: {
+          access_type?: string
+          granted_at?: string
+          id?: string
+          meet_id?: string
+          revoked_at?: string | null
+          square_payment_id?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_meet_access_meet_id_fkey"
+            columns: ["meet_id"]
+            isOneToOne: false
+            referencedRelation: "meets"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       user_roles: {
         Row: {
@@ -455,6 +820,7 @@ export type Database = {
       event_gender: "men" | "women" | "mixed"
       event_status: "scheduled" | "in_progress" | "complete"
       meet_status: "draft" | "upcoming" | "live" | "archived"
+      purse_source_type: "ppv_ticket" | "direct_meet" | "direct_event"
       work_status: "draft" | "published" | "archived"
       work_type: "short" | "work" | "feature"
     }
@@ -589,6 +955,7 @@ export const Constants = {
       event_gender: ["men", "women", "mixed"],
       event_status: ["scheduled", "in_progress", "complete"],
       meet_status: ["draft", "upcoming", "live", "archived"],
+      purse_source_type: ["ppv_ticket", "direct_meet", "direct_event"],
       work_status: ["draft", "published", "archived"],
       work_type: ["short", "work", "feature"],
     },
