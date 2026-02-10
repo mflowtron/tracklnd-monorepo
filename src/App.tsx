@@ -36,12 +36,14 @@ const App = () => (
         <Sonner />
         <BrowserRouter>
           <Routes>
+            {/* Standalone broadcast route (no layout wrapper) */}
+            <Route path="/meets/:slug/watch" element={<BroadcastPage />} />
+
             {/* Public routes */}
             <Route element={<PublicLayout />}>
               <Route path="/" element={<HomePage />} />
               <Route path="/meets" element={<MeetsPage />} />
               <Route path="/meets/:slug" element={<MeetDetailPage />} />
-              <Route path="/meets/:slug/watch" element={<BroadcastPage />} />
               <Route path="/works" element={<WorksPage />} />
               <Route path="/works/:slug" element={<WorkDetailPage />} />
               <Route path="/account" element={<ProtectedRoute><AccountPage /></ProtectedRoute>} />
