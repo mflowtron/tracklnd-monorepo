@@ -56,12 +56,31 @@ export default function RankingList({ entries, savedRanking, isAuthenticated, on
 
   if (!isAuthenticated) {
     return (
-      <div className={cn('flex flex-col items-center gap-2 py-4 text-center', isDark ? 'text-white/60' : 'text-muted-foreground')}>
-        <LogIn className="h-5 w-5" />
-        <p className="text-sm">Log in to rank your picks</p>
-        <Button asChild size="sm" variant={isDark ? 'outline' : 'default'} className={isDark ? 'border-white/20 text-white hover:bg-white/10' : ''}>
-          <Link to="/login">Log In</Link>
-        </Button>
+      <div className={cn(
+        'rounded-lg border p-4',
+        isDark ? 'bg-white/5 border-white/10' : 'bg-muted/50 border-border'
+      )}>
+        <div className="flex items-start gap-3">
+          <div className={cn(
+            'h-9 w-9 rounded-full flex items-center justify-center shrink-0',
+            isDark ? 'bg-amber-500/20' : 'bg-amber-100'
+          )}>
+            <Trophy className={cn('h-4.5 w-4.5', isDark ? 'text-amber-300' : 'text-amber-600')} />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className={cn('font-semibold text-sm', isDark ? 'text-white' : 'text-foreground')}>
+              Pick your podium
+            </p>
+            <p className={cn('text-xs mt-0.5', isDark ? 'text-white/50' : 'text-muted-foreground')}>
+              Log in to rank athletes and predict the top 3 finishers for each event.
+            </p>
+            <Button asChild size="sm" className="mt-2" variant={isDark ? 'outline' : 'default'}>
+              <Link to="/login">
+                <LogIn className="h-3.5 w-3.5 mr-1" /> Log In to Pick
+              </Link>
+            </Button>
+          </div>
+        </div>
       </div>
     );
   }
