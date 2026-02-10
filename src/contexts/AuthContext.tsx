@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import type { User } from '@supabase/supabase-js';
+import { withTimeout } from '@/lib/supabase-fetch';
 
 interface Profile {
   id: string;
@@ -30,32 +31,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const fetchProfile = async (userId: string) => {
     try {
-      const { data } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('user_id', userId)
-        .maybeSingle();
+      const { data } = await withTimeout(
+        supabase.from('profiles').select('*').eq('user_id', userId).maybeSingle()
+      );
       setProfile(data);
     } catch (err) {
-      console.error('Failed to fetch profile:', err);
+      console.error('Auth: failed to fetch profile:', err);
     }
   };
 
   const fetchRole = async (userId: string) => {
     try {
-      const { data } = await supabase
-        .from('user_roles')
-        .select('role')
-        .eq('user_id', userId);
+      const { data } = await withTimeout(
+        supabase.from('user_roles').select('role').eq('user_id', userId)
+      );
       setIsAdmin(data?.some(r => r.role === 'admin') ?? false);
     } catch (err) {
-      console.error('Failed to fetch role:', err);
+      console.error('Auth: failed to fetch role:', err);
     }
   };
 
   useEffect(() => {
-    // Safety timeout: ensure loading resolves even if requests hang
+    console.log('Auth: initializing...');
     const timeout = setTimeout(() => {
+      console.log('Auth: safety timeout reached');
       setLoading(false);
     }, 8000);
 
@@ -71,7 +70,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setLoading(false);
     });
 
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    withTimeout(supabase.auth.getSession()).then(({ data: { session } }) => {
+      console.log('Auth: session resolved', !!session);
       const u = session?.user ?? null;
       setUser(u);
       if (u) {
@@ -80,7 +80,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setLoading(false);
       }
     }).catch((err) => {
-      console.error('Failed to get session:', err);
+      console.error('Auth: getSession failed:', err);
       setLoading(false);
     });
 
