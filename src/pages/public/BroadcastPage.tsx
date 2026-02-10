@@ -4,18 +4,25 @@ import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { ArrowLeft, Calendar, MapPin, PanelRight, ListOrdered } from 'lucide-react';
+import { ArrowLeft, Calendar, MapPin, PanelRight, ListOrdered, DollarSign } from 'lucide-react';
 import { format } from 'date-fns';
 import MuxPlayer from '@mux/mux-player-react';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from '@/components/ui/drawer';
 import BroadcastSidebar from '@/components/broadcast/BroadcastSidebar';
+import PPVPurchaseGate from '@/components/prize-purse/PPVPurchaseGate';
+import DirectContributionModal from '@/components/prize-purse/DirectContributionModal';
+import AnimatedPurseAmount from '@/components/prize-purse/AnimatedPurseAmount';
+import { usePursePolling } from '@/hooks/usePursePolling';
+import { useAuth } from '@/contexts/AuthContext';
+import type { Tables } from '@/integrations/supabase/types';
 
 const POLL_INTERVAL = 30_000;
 
 export default function BroadcastPage() {
   const { slug } = useParams();
   const isMobile = useIsMobile();
+  const { user } = useAuth();
 
   const [meet, setMeet] = useState<any>(null);
   const [broadcast, setBroadcast] = useState<any>(null);
@@ -27,6 +34,34 @@ export default function BroadcastPage() {
   const [paused, setPaused] = useState(false);
   const pausedRef = useRef(false);
 
+  // Prize purse state
+  const [purseConfig, setPurseConfig] = useState<Tables<'prize_purse_configs'> | null>(null);
+  const [hasAccess, setHasAccess] = useState(true); // default true so non-PPV meets just work
+  const [contributionOpen, setContributionOpen] = useState(false);
+
+  const { meetTotal } = usePursePolling(purseConfig?.id ?? null);
+
+  const checkAccess = useCallback(async (meetId: string, configData: Tables<'prize_purse_configs'> | null) => {
+    // If no config or free (ppv_ticket_price = 0), grant access
+    if (!configData || configData.ppv_ticket_price <= 0) {
+      setHasAccess(true);
+      return;
+    }
+    // If not logged in, no access
+    if (!user) {
+      setHasAccess(false);
+      return;
+    }
+    const { data } = await supabase
+      .from('user_meet_access')
+      .select('id')
+      .eq('user_id', user.id)
+      .eq('meet_id', meetId)
+      .is('revoked_at', null)
+      .maybeSingle();
+    setHasAccess(!!data);
+  }, [user]);
+
   const loadData = useCallback(async () => {
     if (!slug) return;
 
@@ -34,8 +69,8 @@ export default function BroadcastPage() {
     setMeet(meetData);
     if (!meetData) { setLoading(false); return; }
 
-    // Fetch broadcast and events+entries in parallel (single nested query replaces N+1)
-    const [broadcastResult, eventsResult] = await Promise.all([
+    // Fetch broadcast, events, and purse config in parallel
+    const [broadcastResult, eventsResult, configResult] = await Promise.all([
       supabase
         .from('broadcasts')
         .select('*')
@@ -48,9 +83,15 @@ export default function BroadcastPage() {
         .eq('meet_id', meetData.id)
         .order('sort_order')
         .order('place', { referencedTable: 'event_entries', ascending: true, nullsFirst: false }),
+      supabase
+        .from('prize_purse_configs')
+        .select('*')
+        .eq('meet_id', meetData.id)
+        .maybeSingle(),
     ]);
 
     setBroadcast(broadcastResult.data?.[0] || null);
+    setPurseConfig(configResult.data);
 
     const evts = eventsResult.data || [];
     setEvents(evts);
@@ -60,8 +101,12 @@ export default function BroadcastPage() {
       newEntries[evt.id] = evt.event_entries || [];
     });
     setEntriesByEvent(newEntries);
+
+    // Check PPV access
+    await checkAccess(meetData.id, configResult.data);
+
     setLoading(false);
-  }, [slug]);
+  }, [slug, checkAccess]);
 
   // Initial load
   useEffect(() => { loadData(); }, [loadData]);
@@ -164,6 +209,23 @@ export default function BroadcastPage() {
               <MapPin className="h-3 w-3" /> {meet.venue}
             </span>
           </div>
+          {purseConfig && (
+            <>
+              <div className="hidden sm:flex items-center gap-1.5 text-xs mr-1">
+                <span className="text-amber-400/60">Purse:</span>
+                <AnimatedPurseAmount value={meetTotal} className="text-amber-400 text-xs font-semibold" />
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-amber-400/80 hover:text-amber-400 hover:bg-amber-400/10"
+                onClick={() => setContributionOpen(true)}
+              >
+                <DollarSign className="h-4 w-4" />
+                <span className="hidden sm:inline ml-1">Contribute</span>
+              </Button>
+            </>
+          )}
           {!isMobile && (
             <Button
               variant="ghost"
@@ -179,21 +241,29 @@ export default function BroadcastPage() {
 
       {/* Main content area */}
       <div className="flex-1 flex min-h-0">
-        {/* Player area */}
+        {/* Player area or PPV gate */}
         <div className="flex-1 flex items-center justify-center p-4 sm:p-6 min-w-0">
-          <div className="w-full max-w-full">
-            <MuxPlayer
-              playbackId={broadcast.mux_playback_id}
-              streamType={broadcast.status === 'live' ? 'live' : 'on-demand'}
-              accentColor="hsl(221, 83%, 53%)"
-              style={{ aspectRatio: '16/9', width: '100%', borderRadius: '0.75rem', overflow: 'hidden' }}
-              metadata={{
-                video_title: broadcast.title,
-                viewer_user_id: 'anonymous',
-              }}
+          {!hasAccess && purseConfig ? (
+            <PPVPurchaseGate
+              meet={{ name: meet.name, venue: meet.venue }}
+              config={purseConfig}
+              onAccessGranted={() => { setHasAccess(true); loadData(); }}
             />
-            <p className="text-white/40 text-xs mt-2">{broadcast.title}</p>
-          </div>
+          ) : (
+            <div className="w-full max-w-full">
+              <MuxPlayer
+                playbackId={broadcast.mux_playback_id}
+                streamType={broadcast.status === 'live' ? 'live' : 'on-demand'}
+                accentColor="hsl(221, 83%, 53%)"
+                style={{ aspectRatio: '16/9', width: '100%', borderRadius: '0.75rem', overflow: 'hidden' }}
+                metadata={{
+                  video_title: broadcast.title,
+                  viewer_user_id: 'anonymous',
+                }}
+              />
+              <p className="text-white/40 text-xs mt-2">{broadcast.title}</p>
+            </div>
+          )}
         </div>
 
         {/* Desktop sidebar */}
@@ -227,6 +297,14 @@ export default function BroadcastPage() {
             </DrawerContent>
           </Drawer>
         </>
+      )}
+      {/* Direct Contribution Modal */}
+      {purseConfig && (
+        <DirectContributionModal
+          open={contributionOpen}
+          onOpenChange={setContributionOpen}
+          configId={purseConfig.id}
+        />
       )}
     </div>
   );
