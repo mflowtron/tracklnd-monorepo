@@ -1,121 +1,122 @@
 
 
-# Mux Broadcast Player -- Full Integration
+# Broadcast Player Revamp -- ESPN+ Style Fullscreen Experience
 
 ## Overview
 
-This plan adds end-to-end Mux video integration: a `broadcasts` database table to link Mux playback IDs to meets, a backend function to list assets from your Mux account, dashboard management to assign videos to meets, and a beautiful public broadcast player page.
+Transform the broadcast player page into a truly immersive, fullscreen viewing experience with a collapsible sidebar showing live event schedules and athlete lineups. The page will break out of the `PublicLayout` wrapper to eliminate the navbar/footer and own the entire viewport.
 
-## Architecture
+## Layout Concept
 
-### 1. Secrets Setup
+```text
++--[Top Bar (slim, transparent)]----------------------------------+
+| <- Back    Meet Name    LIVE badge    [Sidebar Toggle]          |
++--[Main Area]----------------------------------------------------+
+|                                          |  Events & Lineups   |
+|                                          |  +--------------+   |
+|          Mux Video Player                |  | 100m M Final |   |
+|          (fills available space)         |  |  1. Athlete A |   |
+|                                          |  |  2. Athlete B |   |
+|                                          |  +--------------+   |
+|                                          |  | 200m W Semi  |   |
+|                                          |  |  ...         |   |
+|                                          |  +--------------+   |
+|                                          |  [Pause Updates]    |
++------------------------------------------------------------------+
+```
 
-Two Mux credentials need to be securely stored:
-- **MUX_TOKEN_ID** -- your Mux API access token ID
-- **MUX_TOKEN_SECRET** -- your Mux API access token secret
+On mobile, the sidebar becomes a bottom sheet / drawer that slides up over the player.
 
-These will be stored as backend secrets and used only in a backend function (never exposed to the browser).
+## Key Features
 
-### 2. Database -- `broadcasts` Table
+### 1. Standalone Fullscreen Route (no PublicLayout)
 
-A new table linking Mux playback IDs to meets:
+Move `/meets/:slug/watch` outside the `PublicLayout` wrapper in `App.tsx` so the broadcast page owns the entire viewport -- no navbar, no footer, just the player and sidebar.
 
-| Column | Type | Notes |
-|--------|------|-------|
-| id | uuid | Primary key |
-| meet_id | uuid | FK to meets, nullable (can exist without a meet) |
-| title | text | Display title for the broadcast |
-| mux_playback_id | text | The Mux public playback ID |
-| mux_asset_id | text | The Mux asset ID (for reference) |
-| status | text | "idle", "preparing", "ready", "live", "errored" |
-| is_active | boolean | Whether this broadcast is currently shown |
-| thumbnail_url | text | Optional thumbnail override |
-| created_at | timestamptz | Auto-set |
-| updated_at | timestamptz | Auto-set |
+### 2. Slim Top Bar
 
-RLS: Public read access for active broadcasts. Authenticated admin write access.
+A minimal, semi-transparent header overlay with:
+- Back arrow linking to `/meets/:slug`
+- Meet name (truncated on mobile)
+- Live status badge with pulsing indicator
+- Sidebar toggle button (panel icon)
 
-### 3. Backend Function -- `mux-assets`
+### 3. Collapsible Events Sidebar (Desktop)
 
-A backend function that proxies requests to the Mux API so we never expose credentials to the browser.
+A right-side panel (~380px wide) that can be toggled open/closed:
+- **Header**: "Schedule & Lineups" title with a "Pause Updates" toggle
+- **Event list**: Accordion-style cards for each event, grouped or sorted by `sort_order`
+- Each event card shows: event name, gender badge, status badge, scheduled time
+- Expanding an event reveals the athlete lineup table (place, name, flag, team, result, PB badge)
+- Highlighted row for events currently "in_progress" or "live"
+- Smooth slide animation on open/close
+- Player resizes to fill remaining space when sidebar is toggled
 
-**Endpoints:**
-- `GET /mux-assets` -- Lists assets from your Mux account (used in dashboard to pick videos)
-- Returns asset ID, playback IDs, status, duration, and thumbnail URLs
+### 4. Mobile Bottom Drawer
 
-This function reads MUX_TOKEN_ID and MUX_TOKEN_SECRET from secrets and calls the Mux Assets API (`https://api.mux.com/video/v1/assets`).
+On screens below 768px, the sidebar becomes a `vaul` Drawer that slides up from the bottom:
+- A floating "Schedule" button near the bottom of the screen opens it
+- Drawer shows the same event accordion content
+- Draggable to different snap points (collapsed, half, full)
 
-### 4. Dashboard -- Broadcasts Management
+### 5. Pause Live Updates Toggle
 
-**Where:** New "Broadcasts" section inside the Meet Detail Dashboard page (`/dashboard/meets/:id`).
+A switch in the sidebar header that:
+- When ON (default): Events and entries data auto-refreshes every 30 seconds via polling
+- When OFF: Data stays frozen at the last fetched state (for viewers watching behind live)
+- Visual indicator showing "Updates paused" when toggled off
 
-- Shows current broadcast(s) linked to the meet
-- "Add Broadcast" button opens a dialog where admins can:
-  - Browse existing Mux assets (fetched via the backend function)
-  - Select one and assign it with a title
-  - Or manually enter a Mux playback ID
-- Edit/delete existing broadcasts
-- Toggle `is_active` status
+### 6. Data Loading
 
-**New files:**
-- `src/components/dashboard/BroadcastFormDialog.tsx` -- form dialog to create/edit a broadcast entry
+Fetch all events and entries for the meet (same pattern as `MeetDetailPage.tsx`):
+- Load meet by slug
+- Load active broadcast for the meet
+- Load all events ordered by `sort_order`
+- Load all entries per event with athlete joins
+- Polling interval (30s) controlled by the pause toggle
 
-**Modified files:**
-- `src/pages/dashboard/MeetDetailDashboard.tsx` -- add Broadcasts section above Events
+### 7. Future-Ready: Vote/Rankings Placeholder
 
-### 5. Public Broadcast Player Page
-
-**Route:** `/meets/:slug/watch`
-
-A cinematic, full-width player page featuring:
-- Mux Player (via `@mux/mux-player-react`) with the meet's active broadcast playback ID
-- Meet name, date, and status overlay
-- Link back to the meet detail page for results/events
-- Responsive design -- full-width player on mobile, 16:9 contained on desktop
-- Dark background for a theater-like experience
-
-**New files:**
-- `src/pages/public/BroadcastPage.tsx`
-
-**Modified files:**
-- `src/App.tsx` -- add `/meets/:slug/watch` route
-- `src/pages/public/MeetDetailPage.tsx` -- add "Watch Broadcast" button when an active broadcast exists
-
-### 6. Sample Data
-
-After the Mux connection is set up, the backend function will be used to fetch your existing Mux assets. One will be selected and linked to the Portland Track Festival meet as a sample broadcast record.
+Each athlete row in the sidebar will have a subtle right-aligned area (currently empty/disabled) that can later house vote buttons or ranking drag handles. No functionality now, just structural room in the layout.
 
 ## Technical Details
 
-### New Dependencies
-- `@mux/mux-player-react` -- official Mux React player component
+### Files Modified
 
-### New Files
-- `supabase/functions/mux-assets/index.ts` -- backend function to list Mux assets
-- `src/pages/public/BroadcastPage.tsx` -- public player page
-- `src/components/dashboard/BroadcastFormDialog.tsx` -- dashboard form dialog
+**`src/App.tsx`**
+- Move the `/meets/:slug/watch` route outside the `PublicLayout` wrapper so it renders standalone without navbar/footer
 
-### Modified Files
-- `src/App.tsx` -- new route for broadcast page
-- `src/pages/dashboard/MeetDetailDashboard.tsx` -- add broadcasts section
-- `src/pages/public/MeetDetailPage.tsx` -- add "Watch" CTA when broadcast is active
+**`src/pages/public/BroadcastPage.tsx`**
+- Complete rewrite to a fullscreen layout with:
+  - `100vh` viewport container, dark theme background
+  - Flexbox layout: player area + sidebar
+  - Top bar overlay with meet info and controls
+  - Sidebar state management (open/closed)
+  - Events + entries data fetching with polling
+  - Pause toggle using a `useRef` to skip refetch intervals
+  - Mobile detection via `useIsMobile()` hook
+  - Drawer integration for mobile sidebar
 
-### Database Migration
-- Create `broadcasts` table with columns listed above
-- Add RLS policies (public SELECT for active, admin INSERT/UPDATE/DELETE)
+### New Components (extracted within BroadcastPage or as siblings)
 
-### Secrets Required
-- `MUX_TOKEN_ID`
-- `MUX_TOKEN_SECRET`
+**`src/components/broadcast/BroadcastSidebar.tsx`**
+- The sidebar panel content: header with pause toggle, scrollable event accordion list
+- Receives events, entries, paused state, and toggle handler as props
+- Reused in both the desktop panel and mobile drawer
+
+**`src/components/broadcast/EventLineupCard.tsx`**
+- Single event accordion item showing event info + athlete lineup table
+- Highlights "in_progress" events with a subtle accent border
+- Athlete rows with space reserved for future vote/rank actions
+
+### Existing Dependencies Used
+- `vaul` (Drawer) -- already installed, for mobile bottom sheet
+- `@mux/mux-player-react` -- already installed
+- `@radix-ui/react-switch` -- already installed, for pause toggle
+- `lucide-react` -- icons (PanelRight, Pause, Play, etc.)
+- `useIsMobile()` hook -- already exists
 
 ### Implementation Order
-1. Request Mux API credentials (secrets)
-2. Create `broadcasts` table migration
-3. Create `mux-assets` backend function
-4. Install `@mux/mux-player-react`
-5. Build `BroadcastFormDialog` component
-6. Add broadcasts section to Meet Detail Dashboard
-7. Build public `BroadcastPage` with Mux Player
-8. Add route and "Watch" button to meet detail page
-9. Use backend function to fetch a video from your Mux account and create sample broadcast for Portland Track Festival
-
+1. Move broadcast route outside PublicLayout in App.tsx
+2. Create `BroadcastSidebar` and `EventLineupCard` components
+3. Rewrite `BroadcastPage` with fullscreen layout, sidebar toggle, data fetching with polling, and mobile drawer
