@@ -17,7 +17,7 @@ export default function MeetDetailPage() {
   const [events, setEvents] = useState<any[]>([]);
   const [entriesByEvent, setEntriesByEvent] = useState<Record<string, any[]>>({});
   const [hasBroadcast, setHasBroadcast] = useState(false);
-  const [rankingMode, setRankingMode] = useState<Record<string, boolean>>({});
+  
   const [savedRankings, setSavedRankings] = useState<Record<string, string[]>>({});
 
   const loadMeetData = useCallback(async () => {
@@ -78,13 +78,7 @@ export default function MeetDetailPage() {
     return '';
   };
 
-  const toggleRankingMode = (eventId: string) => {
-    if (!isAuthenticated) {
-      window.location.href = '/login';
-      return;
-    }
-    setRankingMode(prev => ({ ...prev, [eventId]: !prev[eventId] }));
-  };
+  
 
   const handleSaveRanking = async (eventId: string, rankedAthleteIds: string[]) => {
     await saveRanking(eventId, rankedAthleteIds);
@@ -169,7 +163,6 @@ export default function MeetDetailPage() {
         <Accordion type="multiple" className="space-y-2">
           {events.map(evt => {
             const entries = entriesByEvent[evt.id] || [];
-            const isRanking = rankingMode[evt.id];
             const hasSavedPicks = !!savedRankings[evt.id]?.length;
 
             return (
@@ -195,20 +188,36 @@ export default function MeetDetailPage() {
                     <p className="text-sm text-muted-foreground py-2">No entries yet.</p>
                   ) : (
                     <>
-                      {/* Toggle button */}
-                      <div className="flex justify-end mb-3">
-                        <Button
-                          size="sm"
-                          variant={isRanking ? 'default' : 'outline'}
-                          onClick={() => toggleRankingMode(evt.id)}
-                          className="text-xs"
-                        >
-                          <Trophy className="h-3.5 w-3.5 mr-1" />
-                          {isRanking ? 'View Results' : 'Rank Athletes'}
-                        </Button>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="border-b text-left text-muted-foreground">
+                              <th className="py-2 pr-3 w-12">#</th>
+                              <th className="py-2 pr-3">Athlete</th>
+                              <th className="py-2 pr-3 w-12"></th>
+                              <th className="py-2 pr-3">Team</th>
+                              <th className="py-2 pr-3 font-mono">Result</th>
+                              <th className="py-2 w-12"></th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {entries.map(entry => (
+                              <tr key={entry.id} className={`border-b last:border-0 ${entry.place && entry.place <= 3 ? 'bg-amber-50/50' : ''}`}>
+                                <td className="py-2.5 pr-3 font-medium">{medalEmoji(entry.place)} {entry.place || '–'}</td>
+                                <td className="py-2.5 pr-3 font-medium">{entry.athletes?.full_name}</td>
+                                <td className="py-2.5 pr-3">{entry.athletes?.country_flag}</td>
+                                <td className="py-2.5 pr-3 text-muted-foreground">{entry.athletes?.team}</td>
+                                <td className="py-2.5 pr-3 font-mono font-medium">{entry.result || '–'}</td>
+                                <td className="py-2.5">
+                                  {entry.is_pb && <Badge className="bg-emerald-100 text-emerald-700 text-[10px]">PB</Badge>}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
                       </div>
 
-                      {isRanking ? (
+                      <div className="mt-4 pt-4 border-t">
                         <RankingList
                           entries={entries}
                           savedRanking={savedRankings[evt.id] || null}
@@ -216,36 +225,7 @@ export default function MeetDetailPage() {
                           onSave={(ids) => handleSaveRanking(evt.id, ids)}
                           variant="light"
                         />
-                      ) : (
-                        <div className="overflow-x-auto">
-                          <table className="w-full text-sm">
-                            <thead>
-                              <tr className="border-b text-left text-muted-foreground">
-                                <th className="py-2 pr-3 w-12">#</th>
-                                <th className="py-2 pr-3">Athlete</th>
-                                <th className="py-2 pr-3 w-12"></th>
-                                <th className="py-2 pr-3">Team</th>
-                                <th className="py-2 pr-3 font-mono">Result</th>
-                                <th className="py-2 w-12"></th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {entries.map(entry => (
-                                <tr key={entry.id} className={`border-b last:border-0 ${entry.place && entry.place <= 3 ? 'bg-amber-50/50' : ''}`}>
-                                  <td className="py-2.5 pr-3 font-medium">{medalEmoji(entry.place)} {entry.place || '–'}</td>
-                                  <td className="py-2.5 pr-3 font-medium">{entry.athletes?.full_name}</td>
-                                  <td className="py-2.5 pr-3">{entry.athletes?.country_flag}</td>
-                                  <td className="py-2.5 pr-3 text-muted-foreground">{entry.athletes?.team}</td>
-                                  <td className="py-2.5 pr-3 font-mono font-medium">{entry.result || '–'}</td>
-                                  <td className="py-2.5">
-                                    {entry.is_pb && <Badge className="bg-emerald-100 text-emerald-700 text-[10px]">PB</Badge>}
-                                  </td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      )}
+                      </div>
                     </>
                   )}
                 </AccordionContent>
