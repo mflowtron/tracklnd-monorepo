@@ -813,6 +813,10 @@ export type Database = {
         }
         Returns: boolean
       }
+      recalculate_all_snapshots: {
+        Args: { p_config_id: string }
+        Returns: undefined
+      }
     }
     Enums: {
       app_role: "admin" | "viewer"
