@@ -11,6 +11,7 @@ import DashboardLayout from "@/layouts/DashboardLayout";
 import HomePage from "@/pages/public/HomePage";
 import MeetsPage from "@/pages/public/MeetsPage";
 import MeetDetailPage from "@/pages/public/MeetDetailPage";
+import BroadcastPage from "@/pages/public/BroadcastPage";
 import WorksPage from "@/pages/public/WorksPage";
 import WorkDetailPage from "@/pages/public/WorkDetailPage";
 import LoginPage from "@/pages/public/LoginPage";
@@ -40,6 +41,7 @@ const App = () => (
               <Route path="/" element={<HomePage />} />
               <Route path="/meets" element={<MeetsPage />} />
               <Route path="/meets/:slug" element={<MeetDetailPage />} />
+              <Route path="/meets/:slug/watch" element={<BroadcastPage />} />
               <Route path="/works" element={<WorksPage />} />
               <Route path="/works/:slug" element={<WorkDetailPage />} />
               <Route path="/account" element={<ProtectedRoute><AccountPage /></ProtectedRoute>} />

@@ -5,13 +5,15 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
-import { ArrowLeft, Calendar, MapPin, Plus, Pencil, Trash2, UserPlus, Users, ExternalLink } from 'lucide-react';
+import { ArrowLeft, Calendar, MapPin, Plus, Pencil, Trash2, UserPlus, Users, ExternalLink, Video, ToggleLeft, ToggleRight } from 'lucide-react';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
+import { Switch } from '@/components/ui/switch';
 import MeetFormDialog from '@/components/dashboard/MeetFormDialog';
 import EventFormDialog from '@/components/dashboard/EventFormDialog';
 import EntryFormDialog from '@/components/dashboard/EntryFormDialog';
 import DeleteConfirmDialog from '@/components/dashboard/DeleteConfirmDialog';
+import BroadcastFormDialog from '@/components/dashboard/BroadcastFormDialog';
 
 export default function MeetDetailDashboard() {
   const { id } = useParams();
@@ -39,6 +41,13 @@ export default function MeetDetailDashboard() {
   const [deleteEntryId, setDeleteEntryId] = useState<string | null>(null);
   const [deletingEntry, setDeletingEntry] = useState(false);
 
+  // Broadcasts
+  const [broadcasts, setBroadcasts] = useState<any[]>([]);
+  const [broadcastFormOpen, setBroadcastFormOpen] = useState(false);
+  const [editingBroadcast, setEditingBroadcast] = useState<any>(null);
+  const [deleteBroadcastId, setDeleteBroadcastId] = useState<string | null>(null);
+  const [deletingBroadcast, setDeletingBroadcast] = useState(false);
+
   const loadData = useCallback(async () => {
     if (!id) return;
     setLoading(true);
@@ -61,6 +70,11 @@ export default function MeetDetailDashboard() {
       })
     );
     setEntriesByEvent(newEntries);
+
+    // Load broadcasts
+    const { data: bc } = await supabase.from('broadcasts' as any).select('*').eq('meet_id', id).order('created_at');
+    setBroadcasts(bc || []);
+
     setLoading(false);
   }, [id]);
 
@@ -95,6 +109,23 @@ export default function MeetDetailDashboard() {
     if (error) { toast.error(error.message); return; }
     toast.success('Entry deleted');
     setDeleteEntryId(null);
+    loadData();
+  };
+
+  const handleDeleteBroadcast = async () => {
+    if (!deleteBroadcastId) return;
+    setDeletingBroadcast(true);
+    const { error } = await supabase.from('broadcasts' as any).delete().eq('id', deleteBroadcastId);
+    setDeletingBroadcast(false);
+    if (error) { toast.error(error.message); return; }
+    toast.success('Broadcast deleted');
+    setDeleteBroadcastId(null);
+    loadData();
+  };
+
+  const toggleBroadcastActive = async (bc: any) => {
+    const { error } = await supabase.from('broadcasts' as any).update({ is_active: !bc.is_active }).eq('id', bc.id);
+    if (error) { toast.error(error.message); return; }
     loadData();
   };
 
@@ -173,6 +204,56 @@ export default function MeetDetailDashboard() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Broadcasts section */}
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-xl font-semibold flex items-center gap-2">
+          <Video className="h-5 w-5" /> Broadcasts ({broadcasts.length})
+        </h3>
+        <Button size="sm" onClick={() => { setEditingBroadcast(null); setBroadcastFormOpen(true); }}>
+          <Plus className="h-4 w-4 mr-1" /> Add Broadcast
+        </Button>
+      </div>
+
+      {broadcasts.length === 0 ? (
+        <Card className="mb-8">
+          <CardContent className="py-8 text-center text-muted-foreground">
+            No broadcasts linked. Click "Add Broadcast" to connect a Mux video.
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="space-y-2 mb-8">
+          {broadcasts.map((bc: any) => (
+            <Card key={bc.id}>
+              <CardContent className="py-4 flex items-center gap-4">
+                {bc.mux_playback_id && (
+                  <img
+                    src={`https://image.mux.com/${bc.mux_playback_id}/thumbnail.jpg?width=160&height=90&fit_mode=smartcrop`}
+                    alt=""
+                    className="w-28 h-16 object-cover rounded"
+                  />
+                )}
+                <div className="flex-1 min-w-0">
+                  <p className="font-semibold truncate">{bc.title}</p>
+                  <p className="text-xs text-muted-foreground font-mono truncate">{bc.mux_playback_id}</p>
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-1.5">
+                    <Switch checked={bc.is_active} onCheckedChange={() => toggleBroadcastActive(bc)} />
+                    <span className="text-xs text-muted-foreground">{bc.is_active ? 'Active' : 'Inactive'}</span>
+                  </div>
+                  <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => { setEditingBroadcast(bc); setBroadcastFormOpen(true); }}>
+                    <Pencil className="h-3.5 w-3.5" />
+                  </Button>
+                  <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setDeleteBroadcastId(bc.id)}>
+                    <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
 
       {/* Events section */}
       <div className="flex items-center justify-between mb-4">
@@ -280,6 +361,8 @@ export default function MeetDetailDashboard() {
       <DeleteConfirmDialog open={deleteMeetOpen} onOpenChange={setDeleteMeetOpen} onConfirm={handleDeleteMeet} loading={deletingMeet} title="Delete Meet?" description="This will permanently delete this meet and all its events and entries." />
       <DeleteConfirmDialog open={!!deleteEventId} onOpenChange={o => !o && setDeleteEventId(null)} onConfirm={handleDeleteEvent} loading={deletingEvent} title="Delete Event?" description="This will delete the event and all its entries." />
       <DeleteConfirmDialog open={!!deleteEntryId} onOpenChange={o => !o && setDeleteEntryId(null)} onConfirm={handleDeleteEntry} loading={deletingEntry} title="Delete Entry?" description="This will remove this athlete from the event." />
+      <DeleteConfirmDialog open={!!deleteBroadcastId} onOpenChange={o => !o && setDeleteBroadcastId(null)} onConfirm={handleDeleteBroadcast} loading={deletingBroadcast} title="Delete Broadcast?" description="This will remove this broadcast from the meet." />
+      {meet && <BroadcastFormDialog open={broadcastFormOpen} onOpenChange={setBroadcastFormOpen} onSaved={loadData} meetId={meet.id} initialData={editingBroadcast} />}
     </div>
   );
 }
