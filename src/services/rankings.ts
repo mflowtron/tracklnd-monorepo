@@ -14,24 +14,29 @@ export async function getUserRanking(eventId: string) {
   return data as unknown as { id: string; user_id: string; event_id: string; ranked_athlete_ids: string[]; updated_at: string } | null;
 }
 
-export async function getUserRankingsForMeet(meetId: string) {
+export async function getUserRankingsForMeet(meetId: string, eventIds?: string[]) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return {};
 
-  // Get all events for this meet
-  const { data: events } = await supabase
-    .from('events')
-    .select('id')
-    .eq('meet_id', meetId);
+  // Use provided eventIds to skip the extra events query
+  let ids = eventIds;
+  if (!ids) {
+    const { data: events } = await supabase
+      .from('events')
+      .select('id')
+      .eq('meet_id', meetId);
 
-  if (!events?.length) return {};
+    if (!events?.length) return {};
+    ids = events.map(e => e.id);
+  }
 
-  const eventIds = events.map(e => e.id);
+  if (!ids.length) return {};
+
   const { data: rankings } = await supabase
     .from('event_rankings' as any)
     .select('*')
     .eq('user_id', user.id)
-    .in('event_id', eventIds);
+    .in('event_id', ids);
 
   const map: Record<string, string[]> = {};
   (rankings || []).forEach((r: any) => {
