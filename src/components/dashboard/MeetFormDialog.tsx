@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import type { Tables } from '@/integrations/supabase/types';
+import ImageUpload from '@/components/dashboard/ImageUpload';
 
 const schema = z.object({
   name: z.string().trim().min(1, 'Required').max(200),
@@ -136,7 +137,12 @@ export default function MeetFormDialog({ open, onOpenChange, onSaved, initialDat
               )} />
             </div>
             <FormField control={form.control} name="hero_image_url" render={({ field }) => (
-              <FormItem><FormLabel>Hero Image URL</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>
+              <FormItem>
+                <FormControl>
+                  <ImageUpload bucket="meet-images" value={field.value || ''} onChange={field.onChange} label="Hero Image" />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
             )} />
             <div className="grid grid-cols-2 gap-4">
               <FormField control={form.control} name="broadcast_partner" render={({ field }) => (
