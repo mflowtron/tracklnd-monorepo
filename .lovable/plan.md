@@ -1,68 +1,48 @@
 
 
-# Improved Drag-and-Drop with Visual Drop Indicator
+# Always-On Ranking with Login Encouragement
 
-## Problem
+## Overview
 
-The current implementation uses basic HTML5 drag-and-drop with no visual feedback -- when dragging an athlete row, the user has no indication of where it will land until they release. This makes ranking feel clunky and unpredictable.
+Remove the "Rank Athletes" toggle button and show both the results table and the ranking list side by side (or stacked) within each event accordion. For logged-out users, the ranking area displays an info blurb encouraging them to log in, replacing the current redirect behavior.
 
-## Solution
+## Changes
 
-Replace the invisible `dragEnter`/`dragEnd` approach with a stateful drag system that:
+### 1. `src/pages/public/MeetDetailPage.tsx`
 
-1. **Highlights the dragged item** with reduced opacity and a subtle scale-down
-2. **Shows a colored drop indicator line** between rows where the item will be inserted
-3. **Live-previews the reordered list** as the user drags, so the list visually rearranges in real time (the approach used by most modern drag UIs like Trello, Linear, etc.)
+- **Remove** the `rankingMode` state and `toggleRankingMode` function entirely
+- **Remove** the toggle button (lines 198-208)
+- **Remove** the conditional rendering that switches between ranking and results table
+- **Show both** the results table AND the RankingList together inside each accordion:
+  - Results table first (the current read-only table with places, results, PB badges)
+  - RankingList below it, always visible, separated by a small heading like "Your Picks"
+- The RankingList component already handles the logged-out state internally (shows a login prompt), so no extra logic is needed
 
-## Approach: Live Preview Reorder
+### 2. `src/components/rankings/RankingList.tsx`
 
-Instead of only applying the reorder on drop, the list will **rearrange in real time** as the user drags over each row. This gives immediate visual feedback of the final position:
+- **Update the logged-out prompt** from the current minimal "Log in to rank your picks" to a more engaging info blurb:
+  - Use a styled card/alert with a Trophy icon
+  - Headline: "Pick your podium"
+  - Body text: "Log in to rank athletes and predict the top 3 finishers for each event."
+  - "Log In" button (already exists, just restyle within the new blurb)
+- Keep all existing drag-and-drop and save functionality unchanged
 
-- On `dragStart`: Store the dragged index, apply a visual "dragging" state (opacity, scale)
-- On `dragOver` (each row): If the hovered row differs from the current drag-over target, immediately reorder the `order` array to show where the item would land
-- On `dragEnd`: Finalize the order (it's already visually correct)
-- On `dragLeave` / escape: Revert to original order
+## Layout per Event Accordion (after change)
 
-This is the same pattern used by Atlassian's drag libraries and feels far more intuitive than a static drop indicator line.
+```text
++------------------------------------------+
+| Results Table (places, times, PB)        |
++------------------------------------------+
+| --- Your Picks section ---               |
+| [Draggable ranking list if logged in]    |
+| [Info blurb + login CTA if logged out]   |
++------------------------------------------+
+```
 
 ## Technical Details
 
-### File Modified: `src/components/rankings/RankingList.tsx`
+### Files Modified
+- `src/pages/public/MeetDetailPage.tsx` -- remove toggle state/button, show both views
+- `src/components/rankings/RankingList.tsx` -- enhance the logged-out prompt to an info blurb
 
-**State changes:**
-- Add `dragIndex` state (number | null) -- the index currently being dragged
-- Add `dragOverIndex` state (number | null) -- the index being hovered over
-- Add `preDragOrder` ref -- snapshot of order before drag started, for cancel/revert
-- Remove `dragItem` and `dragOverItem` refs (replaced by state)
-
-**Drag handlers:**
-- `onDragStart`: Set `dragIndex`, snapshot current order into `preDragOrder`
-- `onDragOver`: Calculate drop position from mouse Y relative to each row's midpoint. If position changed, reorder the array live so the list visually shifts
-- `onDragEnd`: Clear drag state, mark `hasChanges = true`
-- `onDragLeave` (on container): Revert to `preDragOrder` if drag leaves the list entirely
-
-**Visual feedback on the dragged row:**
-- `opacity-50 scale-[0.98] shadow-lg ring-2 ring-primary/40` while dragging
-- Other rows get a smooth `transition-transform` so they animate into their new positions
-
-**Drop indicator line:**
-- A 2px tall colored bar (primary color) rendered between rows at the current drop position
-- Appears via absolute positioning or a conditional div inserted at `dragOverIndex`
-
-**Touch / mobile:**
-- The up/down arrow buttons remain as the mobile fallback (unchanged)
-- HTML5 drag events don't work reliably on touch, so arrows stay for mobile users
-
-### No new dependencies
-
-This stays zero-dependency -- just smarter use of HTML5 drag events and React state.
-
-### Summary of visual improvements
-
-| Before | After |
-|--------|-------|
-| No feedback during drag | Live list reordering as you drag |
-| No indication of drop target | Drop indicator line between rows |
-| Dragged item looks the same | Dragged item has reduced opacity + ring highlight |
-| Abrupt position change on drop | Smooth CSS transitions as rows shift |
-
+### No new files or dependencies needed
