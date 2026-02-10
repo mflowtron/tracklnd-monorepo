@@ -59,7 +59,7 @@ export default function DashboardLayout() {
         </button>
       </div>
 
-      <nav className="flex-1 px-2 space-y-1">
+      <nav className="flex-1 px-2 space-y-1 text-[15px]">
         {visibleItems.map(item => {
           const active = location.pathname === item.to;
           return (
@@ -130,7 +130,7 @@ export default function DashboardLayout() {
             <button className="md:hidden p-1" onClick={() => setMobileOpen(true)}>
               <Menu className="h-5 w-5" />
             </button>
-            <h1 className="text-lg font-semibold">{currentTitle}</h1>
+            <h1 className="text-xl font-semibold">{currentTitle}</h1>
           </div>
 
           <div className="flex items-center gap-4">
@@ -169,7 +169,7 @@ export default function DashboardLayout() {
         </header>
 
         {/* Page content */}
-        <main className="flex-1 overflow-auto p-4 sm:p-6">
+        <main className="flex-1 overflow-auto p-4 sm:p-6 text-[15px]">
           <Outlet />
         </main>
       </div>
