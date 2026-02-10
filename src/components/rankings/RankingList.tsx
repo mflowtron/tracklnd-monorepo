@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { GripVertical, Trophy, LogIn } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 
 interface Athlete {
   id: string;
@@ -44,6 +44,7 @@ const medalEmoji = (place: number | null) => {
 
 export default function RankingList({ entries, savedRanking, isAuthenticated, onSave, variant = 'light' }: RankingListProps) {
   const isDark = variant === 'dark';
+  const location = useLocation();
 
   const buildOrder = useCallback(() => {
     const athleteIds = entries.map(e => e.athlete_id);
@@ -94,7 +95,7 @@ export default function RankingList({ entries, savedRanking, isAuthenticated, on
                 Log in to rank athletes and predict the top 3 finishers for each event.
               </p>
               <Button asChild size="sm" className="mt-2" variant={isDark ? 'outline' : 'default'}>
-                <Link to="/login">
+                <Link to="/login" state={{ from: location.pathname }}>
                   <LogIn className="h-3.5 w-3.5 mr-1" /> Log In to Pick
                 </Link>
               </Button>
