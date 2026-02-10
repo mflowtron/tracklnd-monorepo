@@ -187,46 +187,13 @@ export default function MeetDetailPage() {
                   {entries.length === 0 ? (
                     <p className="text-sm text-muted-foreground py-2">No entries yet.</p>
                   ) : (
-                    <>
-                      <div className="overflow-x-auto">
-                        <table className="w-full text-sm">
-                          <thead>
-                            <tr className="border-b text-left text-muted-foreground">
-                              <th className="py-2 pr-3 w-12">#</th>
-                              <th className="py-2 pr-3">Athlete</th>
-                              <th className="py-2 pr-3 w-12"></th>
-                              <th className="py-2 pr-3">Team</th>
-                              <th className="py-2 pr-3 font-mono">Result</th>
-                              <th className="py-2 w-12"></th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {entries.map(entry => (
-                              <tr key={entry.id} className={`border-b last:border-0 ${entry.place && entry.place <= 3 ? 'bg-amber-50/50' : ''}`}>
-                                <td className="py-2.5 pr-3 font-medium">{medalEmoji(entry.place)} {entry.place || '–'}</td>
-                                <td className="py-2.5 pr-3 font-medium">{entry.athletes?.full_name}</td>
-                                <td className="py-2.5 pr-3">{entry.athletes?.country_flag}</td>
-                                <td className="py-2.5 pr-3 text-muted-foreground">{entry.athletes?.team}</td>
-                                <td className="py-2.5 pr-3 font-mono font-medium">{entry.result || '–'}</td>
-                                <td className="py-2.5">
-                                  {entry.is_pb && <Badge className="bg-emerald-100 text-emerald-700 text-[10px]">PB</Badge>}
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-
-                      <div className="mt-4 pt-4 border-t">
-                        <RankingList
-                          entries={entries}
-                          savedRanking={savedRankings[evt.id] || null}
-                          isAuthenticated={isAuthenticated}
-                          onSave={(ids) => handleSaveRanking(evt.id, ids)}
-                          variant="light"
-                        />
-                      </div>
-                    </>
+                    <RankingList
+                      entries={entries}
+                      savedRanking={savedRankings[evt.id] || null}
+                      isAuthenticated={isAuthenticated}
+                      onSave={(ids) => handleSaveRanking(evt.id, ids)}
+                      variant="light"
+                    />
                   )}
                 </AccordionContent>
               </AccordionItem>
