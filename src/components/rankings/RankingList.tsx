@@ -34,11 +34,9 @@ const medalStyles = [
 export default function RankingList({ entries, savedRanking, isAuthenticated, onSave, variant = 'light' }: RankingListProps) {
   const isDark = variant === 'dark';
 
-  // Build initial order from saved ranking or entry order
   const buildOrder = useCallback(() => {
     const athleteIds = entries.map(e => e.athlete_id);
     if (savedRanking?.length) {
-      // Put saved ranked athletes first, then remaining
       const ranked = savedRanking.filter(id => athleteIds.includes(id));
       const remaining = athleteIds.filter(id => !ranked.includes(id));
       return [...ranked, ...remaining];
@@ -49,8 +47,12 @@ export default function RankingList({ entries, savedRanking, isAuthenticated, on
   const [order, setOrder] = useState<string[]>(buildOrder);
   const [saving, setSaving] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
-  const dragItem = useRef<number | null>(null);
-  const dragOverItem = useRef<number | null>(null);
+
+  // Drag state
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+  const preDragOrder = useRef<string[]>([]);
+  const dragAthleteId = useRef<string | null>(null);
 
   if (!isAuthenticated) {
     return (
@@ -69,22 +71,49 @@ export default function RankingList({ entries, savedRanking, isAuthenticated, on
   const athleteMap = new Map(entries.map(e => [e.athlete_id, e.athletes]));
 
   const handleDragStart = (index: number) => {
-    dragItem.current = index;
+    preDragOrder.current = [...order];
+    dragAthleteId.current = order[index];
+    setDragIndex(index);
+    setDragOverIndex(index);
   };
 
-  const handleDragEnter = (index: number) => {
-    dragOverItem.current = index;
+  const handleDragOver = (e: React.DragEvent, index: number) => {
+    e.preventDefault();
+    if (dragIndex === null || dragAthleteId.current === null) return;
+    if (index === dragOverIndex) return;
+
+    // Live reorder: move the dragged item to the new position
+    const currentIndex = order.indexOf(dragAthleteId.current!);
+    if (currentIndex === -1 || currentIndex === index) return;
+
+    const newOrder = [...order];
+    const [removed] = newOrder.splice(currentIndex, 1);
+    newOrder.splice(index, 0, removed);
+    setOrder(newOrder);
+    setDragOverIndex(index);
   };
 
   const handleDragEnd = () => {
-    if (dragItem.current === null || dragOverItem.current === null) return;
-    const newOrder = [...order];
-    const [removed] = newOrder.splice(dragItem.current, 1);
-    newOrder.splice(dragOverItem.current, 0, removed);
-    setOrder(newOrder);
-    setHasChanges(true);
-    dragItem.current = null;
-    dragOverItem.current = null;
+    if (dragIndex !== null && dragAthleteId.current !== null) {
+      // Check if order actually changed from pre-drag
+      const changed = preDragOrder.current.some((id, i) => order[i] !== id);
+      if (changed) setHasChanges(true);
+    }
+    setDragIndex(null);
+    setDragOverIndex(null);
+    dragAthleteId.current = null;
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    // Only revert if leaving the container entirely
+    const container = e.currentTarget as HTMLElement;
+    const related = e.relatedTarget as HTMLElement | null;
+    if (related && container.contains(related)) return;
+
+    setOrder(preDragOrder.current);
+    setDragIndex(null);
+    setDragOverIndex(null);
+    dragAthleteId.current = null;
   };
 
   const moveItem = (index: number, direction: -1 | 1) => {
@@ -111,6 +140,9 @@ export default function RankingList({ entries, savedRanking, isAuthenticated, on
     setHasChanges(false);
   };
 
+  const isDragging = dragIndex !== null;
+  const draggedAthleteId = dragAthleteId.current;
+
   return (
     <div className="space-y-2">
       <div className={cn('flex items-center gap-2 mb-2', isDark ? 'text-white/70' : 'text-muted-foreground')}>
@@ -118,22 +150,29 @@ export default function RankingList({ entries, savedRanking, isAuthenticated, on
         <span className="text-xs font-medium uppercase tracking-wide">Your Picks</span>
       </div>
 
-      <div className="space-y-1">
+      <div
+        className="space-y-1"
+        onDragLeave={handleDragLeave}
+      >
         {order.map((athleteId, index) => {
           const athlete = athleteMap.get(athleteId);
           if (!athlete) return null;
           const medal = index < 3 ? medalStyles[index] : null;
+          const isBeingDragged = isDragging && athleteId === draggedAthleteId;
 
           return (
             <div
               key={athleteId}
               draggable
               onDragStart={() => handleDragStart(index)}
-              onDragEnter={() => handleDragEnter(index)}
+              onDragOver={(e) => handleDragOver(e, index)}
               onDragEnd={handleDragEnd}
-              onDragOver={(e) => e.preventDefault()}
               className={cn(
-                'flex items-center gap-2 px-2 py-1.5 rounded-md border cursor-grab active:cursor-grabbing transition-colors text-sm',
+                'flex items-center gap-2 px-2 py-1.5 rounded-md border cursor-grab active:cursor-grabbing text-sm',
+                // Smooth transition for non-dragged rows
+                !isBeingDragged && 'transition-all duration-150',
+                // Dragged item styling
+                isBeingDragged && 'opacity-50 scale-[0.98] shadow-lg ring-2 ring-primary/40 z-10 relative',
                 medal
                   ? isDark
                     ? `${medal.bg} border-${medal.border.split('-').slice(1).join('-')}/30`
