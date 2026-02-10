@@ -1,7 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import type { User } from '@supabase/supabase-js';
-import { fetchWithRetry } from '@/lib/supabase-fetch';
 
 interface Profile {
   id: string;
@@ -31,9 +30,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const fetchProfile = async (userId: string) => {
     try {
-      const { data } = await fetchWithRetry(
-        () => supabase.from('profiles').select('*').eq('user_id', userId).maybeSingle()
-      );
+      const { data } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('user_id', userId)
+        .maybeSingle();
       setProfile(data);
     } catch (err) {
       console.error('Auth: failed to fetch profile:', err);
@@ -42,9 +43,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const fetchRole = async (userId: string) => {
     try {
-      const { data } = await fetchWithRetry(
-        () => supabase.from('user_roles').select('role').eq('user_id', userId)
-      );
+      const { data } = await supabase
+        .from('user_roles')
+        .select('role')
+        .eq('user_id', userId);
       setIsAdmin(data?.some(r => r.role === 'admin') ?? false);
     } catch (err) {
       console.error('Auth: failed to fetch role:', err);
@@ -53,38 +55,35 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     console.log('Auth: initializing...');
+    let mounted = true;
+
     const timeout = setTimeout(() => {
-      console.log('Auth: safety timeout reached');
-      setLoading(false);
-    }, 3000);
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      const u = session?.user ?? null;
-      setUser(u);
-      if (u) {
-        await Promise.allSettled([fetchProfile(u.id), fetchRole(u.id)]);
-      } else {
-        setProfile(null);
-        setIsAdmin(false);
-      }
-      setLoading(false);
-    });
-
-    fetchWithRetry(() => supabase.auth.getSession()).then(({ data: { session } }) => {
-      console.log('Auth: session resolved', !!session);
-      const u = session?.user ?? null;
-      setUser(u);
-      if (u) {
-        Promise.allSettled([fetchProfile(u.id), fetchRole(u.id)]).then(() => setLoading(false));
-      } else {
+      if (mounted) {
+        console.log('Auth: safety timeout reached');
         setLoading(false);
       }
-    }).catch((err) => {
-      console.error('Auth: getSession failed:', err);
-      setLoading(false);
-    });
+    }, 5000);
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (_event, session) => {
+        if (!mounted) return;
+        const u = session?.user ?? null;
+        setUser(u);
+        if (u) {
+          await Promise.allSettled([fetchProfile(u.id), fetchRole(u.id)]);
+        } else {
+          setProfile(null);
+          setIsAdmin(false);
+        }
+        if (mounted) {
+          clearTimeout(timeout);
+          setLoading(false);
+        }
+      }
+    );
 
     return () => {
+      mounted = false;
       clearTimeout(timeout);
       subscription.unsubscribe();
     };
