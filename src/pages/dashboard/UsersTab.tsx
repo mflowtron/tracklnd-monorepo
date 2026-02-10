@@ -1,21 +1,49 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { toast } from 'sonner';
+import DeleteConfirmDialog from '@/components/dashboard/DeleteConfirmDialog';
 
 export default function UsersTab() {
   const [profiles, setProfiles] = useState<any[]>([]);
   const [roles, setRoles] = useState<Record<string, string>>({});
+  const [confirmUserId, setConfirmUserId] = useState<string | null>(null);
+  const [pendingRole, setPendingRole] = useState<string | null>(null);
+  const [changing, setChanging] = useState(false);
 
-  useEffect(() => {
-    supabase.from('profiles').select('*').order('created_at', { ascending: false }).then(({ data }) => setProfiles(data || []));
-    supabase.from('user_roles').select('*').then(({ data }) => {
-      const map: Record<string, string> = {};
-      data?.forEach(r => { map[r.user_id] = r.role; });
-      setRoles(map);
-    });
+  const loadData = useCallback(async () => {
+    const [{ data: p }, { data: r }] = await Promise.all([
+      supabase.from('profiles').select('*').order('created_at', { ascending: false }),
+      supabase.from('user_roles').select('*'),
+    ]);
+    setProfiles(p || []);
+    const map: Record<string, string> = {};
+    r?.forEach(role => { map[role.user_id] = role.role; });
+    setRoles(map);
   }, []);
+
+  useEffect(() => { loadData(); }, [loadData]);
+
+  const initiateRoleChange = (userId: string, newRole: string) => {
+    if (roles[userId] === newRole) return;
+    setConfirmUserId(userId);
+    setPendingRole(newRole);
+  };
+
+  const confirmRoleChange = async () => {
+    if (!confirmUserId || !pendingRole) return;
+    setChanging(true);
+    const { error } = await supabase.from('user_roles').update({ role: pendingRole as any }).eq('user_id', confirmUserId);
+    setChanging(false);
+    if (error) { toast.error(error.message); return; }
+    toast.success(`Role changed to ${pendingRole}`);
+    setConfirmUserId(null);
+    setPendingRole(null);
+    loadData();
+  };
 
   const admins = profiles.filter(p => roles[p.user_id] === 'admin').length;
 
@@ -35,11 +63,27 @@ export default function UsersTab() {
             <div key={p.id} className="flex items-center gap-4 p-3 rounded-lg border bg-background">
               <Avatar className="h-9 w-9"><AvatarFallback className="text-xs bg-primary text-primary-foreground">{initials}</AvatarFallback></Avatar>
               <div className="flex-1"><p className="font-medium text-sm">{p.display_name || 'Unnamed'}</p></div>
-              <Badge variant={role === 'admin' ? 'default' : 'secondary'} className="text-xs">{role}</Badge>
+              <Select value={role} onValueChange={v => initiateRoleChange(p.user_id, v)}>
+                <SelectTrigger className="w-28 h-8 text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="admin">admin</SelectItem>
+                  <SelectItem value="viewer">viewer</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           );
         })}
       </div>
+      <DeleteConfirmDialog
+        open={!!confirmUserId}
+        onOpenChange={o => { if (!o) { setConfirmUserId(null); setPendingRole(null); } }}
+        onConfirm={confirmRoleChange}
+        loading={changing}
+        title="Change User Role?"
+        description={`Are you sure you want to change this user's role to "${pendingRole}"?`}
+      />
     </div>
   );
 }

@@ -1,20 +1,42 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { format } from 'date-fns';
-import { Plus } from 'lucide-react';
+import { Plus, Pencil, Trash2 } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { toast } from 'sonner';
+import type { Tables } from '@/integrations/supabase/types';
+import WorkFormDialog from '@/components/dashboard/WorkFormDialog';
+import DeleteConfirmDialog from '@/components/dashboard/DeleteConfirmDialog';
 
 export default function ContentTab() {
-  const [works, setWorks] = useState<any[]>([]);
+  const [works, setWorks] = useState<Tables<'works'>[]>([]);
   const [typeFilter, setTypeFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [formOpen, setFormOpen] = useState(false);
+  const [editing, setEditing] = useState<Tables<'works'> | null>(null);
+  const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
-  useEffect(() => {
-    supabase.from('works').select('*').order('published_at', { ascending: false }).then(({ data }) => setWorks(data || []));
+  const loadWorks = useCallback(async () => {
+    const { data } = await supabase.from('works').select('*').order('published_at', { ascending: false });
+    setWorks(data || []);
   }, []);
+
+  useEffect(() => { loadWorks(); }, [loadWorks]);
+
+  const handleDelete = async () => {
+    if (!deleteId) return;
+    setDeleting(true);
+    const { error } = await supabase.from('works').delete().eq('id', deleteId);
+    setDeleting(false);
+    if (error) { toast.error(error.message); return; }
+    toast.success('Work deleted');
+    setDeleteId(null);
+    loadWorks();
+  };
 
   const filtered = works.filter(w => (typeFilter === 'all' || w.work_type === typeFilter) && (statusFilter === 'all' || w.status === statusFilter));
   const counts = { all: works.length, short: works.filter(w => w.work_type === 'short').length, work: works.filter(w => w.work_type === 'work').length, feature: works.filter(w => w.work_type === 'feature').length, published: works.filter(w => w.status === 'published').length, draft: works.filter(w => w.status === 'draft').length };
@@ -23,7 +45,7 @@ export default function ContentTab() {
     <div>
       <div className="flex items-center justify-between mb-6">
         <h2 className="text-2xl font-bold">Content</h2>
-        <Button size="sm"><Plus className="h-4 w-4 mr-1" /> Create Work</Button>
+        <Button size="sm" onClick={() => { setEditing(null); setFormOpen(true); }}><Plus className="h-4 w-4 mr-1" /> Create Work</Button>
       </div>
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
         <Card><CardContent className="pt-4 pb-3"><p className="text-2xl font-bold">{counts.all}</p><p className="text-xs text-muted-foreground">Total</p></CardContent></Card>
@@ -52,10 +74,16 @@ export default function ContentTab() {
                 <span className="text-xs text-muted-foreground">{w.published_at && format(new Date(w.published_at), 'MMM d, yyyy')}</span>
               </div>
             </div>
-            <Button variant="outline" size="sm" asChild><Link to={`/works/${w.slug}`}>View</Link></Button>
+            <div className="flex items-center gap-1">
+              <Button variant="ghost" size="icon" onClick={() => { setEditing(w); setFormOpen(true); }}><Pencil className="h-4 w-4" /></Button>
+              <Button variant="ghost" size="icon" onClick={() => setDeleteId(w.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+              <Button variant="outline" size="sm" asChild><Link to={`/works/${w.slug}`}>View</Link></Button>
+            </div>
           </div>
         ))}
       </div>
+      <WorkFormDialog open={formOpen} onOpenChange={setFormOpen} onSaved={loadWorks} initialData={editing} />
+      <DeleteConfirmDialog open={!!deleteId} onOpenChange={o => !o && setDeleteId(null)} onConfirm={handleDelete} loading={deleting} title="Delete Work?" description="This will permanently delete this content." />
     </div>
   );
 }
