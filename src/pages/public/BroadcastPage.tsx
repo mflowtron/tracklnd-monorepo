@@ -33,29 +33,31 @@ export default function BroadcastPage() {
     setMeet(meetData);
     if (!meetData) { setLoading(false); return; }
 
-    const { data: broadcasts } = await supabase
-      .from('broadcasts')
-      .select('*')
-      .eq('meet_id', meetData.id)
-      .eq('is_active', true)
-      .limit(1);
-    setBroadcast(broadcasts?.[0] || null);
+    // Fetch broadcast and events+entries in parallel (single nested query replaces N+1)
+    const [broadcastResult, eventsResult] = await Promise.all([
+      supabase
+        .from('broadcasts')
+        .select('*')
+        .eq('meet_id', meetData.id)
+        .eq('is_active', true)
+        .limit(1),
+      supabase
+        .from('events')
+        .select('*, event_entries(*, athletes(*))')
+        .eq('meet_id', meetData.id)
+        .order('sort_order')
+        .order('place', { referencedTable: 'event_entries', ascending: true, nullsFirst: false }),
+    ]);
 
-    // Load events & entries
-    const { data: evts } = await supabase.from('events').select('*').eq('meet_id', meetData.id).order('sort_order');
-    setEvents(evts || []);
+    setBroadcast(broadcastResult.data?.[0] || null);
+
+    const evts = eventsResult.data || [];
+    setEvents(evts);
 
     const newEntries: Record<string, any[]> = {};
-    await Promise.all(
-      (evts || []).map(async (evt) => {
-        const { data: entries } = await supabase
-          .from('event_entries')
-          .select('*, athletes(*)')
-          .eq('event_id', evt.id)
-          .order('place', { ascending: true, nullsFirst: false });
-        newEntries[evt.id] = entries || [];
-      })
-    );
+    evts.forEach((evt: any) => {
+      newEntries[evt.id] = evt.event_entries || [];
+    });
     setEntriesByEvent(newEntries);
     setLoading(false);
   }, [slug]);

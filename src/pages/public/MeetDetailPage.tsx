@@ -27,7 +27,6 @@ export default function MeetDetailPage() {
     if (!slug) return;
     setLoading(true);
     setError(null);
-    console.log('MeetDetailPage: fetching data...');
     try {
       const { data: meetData, error: meetError } = await fetchWithRetry(() =>
         supabase.from('meets').select('*').eq('slug', slug).maybeSingle()
@@ -36,37 +35,44 @@ export default function MeetDetailPage() {
       setMeet(meetData);
       if (!meetData) { setLoading(false); return; }
 
-      const { data: evts } = await fetchWithRetry(() =>
-        supabase.from('events').select('*').eq('meet_id', meetData.id).order('sort_order')
-      );
-      setEvents(evts || []);
+      // Fetch events+entries (nested), pick counts, and broadcast check in parallel
+      const [eventsResult, countsResult, bcResult] = await Promise.all([
+        fetchWithRetry(() =>
+          supabase
+            .from('events')
+            .select('*, event_entries(*, athletes(*))')
+            .eq('meet_id', meetData.id)
+            .order('sort_order')
+            .order('place', { referencedTable: 'event_entries', ascending: true, nullsFirst: false })
+        ),
+        fetchWithRetry(() =>
+          supabase.rpc('get_event_pick_counts', { meet_id_param: meetData.id })
+        ),
+        fetchWithRetry(() =>
+          supabase.from('broadcasts' as any).select('id').eq('meet_id', meetData.id).eq('is_active', true).limit(1)
+        ),
+      ]);
 
+      const evts = eventsResult.data || [];
+      setEvents(evts);
+
+      // Build entriesByEvent from nested data
       const newEntries: Record<string, any[]> = {};
-      await Promise.all(
-        (evts || []).map(async (evt) => {
-          const { data: entries } = await fetchWithRetry(() =>
-            supabase.from('event_entries').select('*, athletes(*)').eq('event_id', evt.id).order('place', { ascending: true, nullsFirst: false })
-          );
-          newEntries[evt.id] = entries || [];
-        })
-      );
+      evts.forEach((evt: any) => {
+        newEntries[evt.id] = evt.event_entries || [];
+      });
       setEntriesByEvent(newEntries);
 
-      const rankings = await getUserRankingsForMeet(meetData.id);
+      // Fetch rankings with known event IDs (avoids redundant events query)
+      const eventIds = evts.map((e: any) => e.id);
+      const rankings = await getUserRankingsForMeet(meetData.id, eventIds);
       setSavedRankings(rankings);
 
-      const { data: counts } = await fetchWithRetry(() =>
-        supabase.rpc('get_event_pick_counts', { meet_id_param: meetData.id })
-      );
       const countsMap: Record<string, number> = {};
-      (counts || []).forEach((r: any) => { countsMap[r.event_id] = Number(r.pick_count); });
+      (countsResult.data || []).forEach((r: any) => { countsMap[r.event_id] = Number(r.pick_count); });
       setPickCounts(countsMap);
 
-      const { data: bc } = await fetchWithRetry(() =>
-        supabase.from('broadcasts' as any).select('id').eq('meet_id', meetData.id).eq('is_active', true).limit(1)
-      );
-      setHasBroadcast((bc?.length || 0) > 0);
-      console.log('MeetDetailPage: fetch complete');
+      setHasBroadcast((bcResult.data?.length || 0) > 0);
     } catch (err) {
       console.error('MeetDetailPage: fetch failed:', err);
       setError('Failed to load meet data. Please try again.');
