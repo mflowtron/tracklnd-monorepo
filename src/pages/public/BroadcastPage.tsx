@@ -166,7 +166,7 @@ export default function BroadcastPage() {
           <div className="w-full max-w-full">
             <MuxPlayer
               playbackId={broadcast.mux_playback_id}
-              streamType={meet.status === 'live' ? 'live' : 'on-demand'}
+              streamType={broadcast.status === 'live' ? 'live' : 'on-demand'}
               accentColor="hsl(221, 83%, 53%)"
               style={{ aspectRatio: '16/9', width: '100%', borderRadius: '0.75rem', overflow: 'hidden' }}
               metadata={{
