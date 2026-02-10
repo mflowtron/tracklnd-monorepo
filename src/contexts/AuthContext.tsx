@@ -57,13 +57,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     console.log('Auth: initializing...');
     let mounted = true;
 
-    const timeout = setTimeout(() => {
-      if (mounted) {
-        console.log('Auth: safety timeout reached');
-        setLoading(false);
+    // Fast initial check: getSession() reads from localStorage and resolves
+    // quickly even when the token is stale and needs refreshing. This avoids
+    // the race where onAuthStateChange is delayed by a token refresh and the
+    // user is briefly treated as unauthenticated.
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
+      if (!mounted) return;
+      const u = session?.user ?? null;
+      setUser(u);
+      if (u) {
+        await Promise.allSettled([fetchProfile(u.id), fetchRole(u.id)]);
       }
-    }, 5000);
+      if (mounted) setLoading(false);
+    });
 
+    // Handle ongoing auth changes (token refresh, login, logout)
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (_event, session) => {
         if (!mounted) return;
@@ -75,16 +83,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setProfile(null);
           setIsAdmin(false);
         }
-        if (mounted) {
-          clearTimeout(timeout);
-          setLoading(false);
-        }
       }
     );
 
     return () => {
       mounted = false;
-      clearTimeout(timeout);
       subscription.unsubscribe();
     };
   }, []);
