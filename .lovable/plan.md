@@ -1,122 +1,104 @@
 
 
-# Broadcast Player Revamp -- ESPN+ Style Fullscreen Experience
+# User Rankings for Meet Events
 
 ## Overview
 
-Transform the broadcast player page into a truly immersive, fullscreen viewing experience with a collapsible sidebar showing live event schedules and athlete lineups. The page will break out of the `PublicLayout` wrapper to eliminate the navbar/footer and own the entire viewport.
+Add a fan ranking feature where logged-in users can drag-and-drop athletes within each event to create their personal podium predictions. The top 3 picks are visually highlighted as gold, silver, and bronze. Rankings are saved per user per event in the database.
 
-## Layout Concept
+## Database
 
-```text
-+--[Top Bar (slim, transparent)]----------------------------------+
-| <- Back    Meet Name    LIVE badge    [Sidebar Toggle]          |
-+--[Main Area]----------------------------------------------------+
-|                                          |  Events & Lineups   |
-|                                          |  +--------------+   |
-|          Mux Video Player                |  | 100m M Final |   |
-|          (fills available space)         |  |  1. Athlete A |   |
-|                                          |  |  2. Athlete B |   |
-|                                          |  +--------------+   |
-|                                          |  | 200m W Semi  |   |
-|                                          |  |  ...         |   |
-|                                          |  +--------------+   |
-|                                          |  [Pause Updates]    |
-+------------------------------------------------------------------+
-```
+### New Table: `event_rankings`
 
-On mobile, the sidebar becomes a bottom sheet / drawer that slides up over the player.
+Stores one row per user per event, with the user's ordered list of athlete IDs.
 
-## Key Features
+| Column | Type | Notes |
+|--------|------|-------|
+| id | uuid | Primary key |
+| user_id | uuid | NOT NULL, references auth.users ON DELETE CASCADE |
+| event_id | uuid | NOT NULL, references events ON DELETE CASCADE |
+| ranked_athlete_ids | text[] | Ordered array of athlete IDs (1st = index 0) |
+| updated_at | timestamptz | Auto-set via trigger |
 
-### 1. Standalone Fullscreen Route (no PublicLayout)
+- **Unique constraint** on `(user_id, event_id)` so each user has one ranking per event
+- **RLS policies:**
+  - Authenticated users can SELECT their own rankings (`auth.uid() = user_id`)
+  - Authenticated users can INSERT their own rankings (`auth.uid() = user_id`)
+  - Authenticated users can UPDATE their own rankings (`auth.uid() = user_id`)
+  - Authenticated users can DELETE their own rankings (`auth.uid() = user_id`)
 
-Move `/meets/:slug/watch` outside the `PublicLayout` wrapper in `App.tsx` so the broadcast page owns the entire viewport -- no navbar, no footer, just the player and sidebar.
+### Why text[] for rankings
 
-### 2. Slim Top Bar
+Storing the full ordered list as an array keeps it simple -- one upsert per save, no join table, easy to swap to a REST API later (just send a JSON array). The array stores athlete UUIDs in ranked order.
 
-A minimal, semi-transparent header overlay with:
-- Back arrow linking to `/meets/:slug`
-- Meet name (truncated on mobile)
-- Live status badge with pulsing indicator
-- Sidebar toggle button (panel icon)
+## UI Changes
 
-### 3. Collapsible Events Sidebar (Desktop)
+### 1. Meet Detail Page (`MeetDetailPage.tsx`)
 
-A right-side panel (~380px wide) that can be toggled open/closed:
-- **Header**: "Schedule & Lineups" title with a "Pause Updates" toggle
-- **Event list**: Accordion-style cards for each event, grouped or sorted by `sort_order`
-- Each event card shows: event name, gender badge, status badge, scheduled time
-- Expanding an event reveals the athlete lineup table (place, name, flag, team, result, PB badge)
-- Highlighted row for events currently "in_progress" or "live"
-- Smooth slide animation on open/close
-- Player resizes to fill remaining space when sidebar is toggled
+Add a "Rank Athletes" button/toggle per event that switches the entry list into ranking mode:
 
-### 4. Mobile Bottom Drawer
+- **Default view**: Current read-only results table (unchanged)
+- **Ranking mode**: Draggable list of athletes with grip handles
+  - Top 3 slots show gold/silver/bronze badges
+  - "Save Rankings" button to persist
+  - "Cancel" to discard changes
+  - If not logged in, clicking the rank button redirects to `/login`
 
-On screens below 768px, the sidebar becomes a `vaul` Drawer that slides up from the bottom:
-- A floating "Schedule" button near the bottom of the screen opens it
-- Drawer shows the same event accordion content
-- Draggable to different snap points (collapsed, half, full)
+### 2. Broadcast Sidebar (`EventLineupCard.tsx`)
 
-### 5. Pause Live Updates Toggle
+Add a compact ranking toggle in the sidebar event cards:
 
-A switch in the sidebar header that:
-- When ON (default): Events and entries data auto-refreshes every 30 seconds via polling
-- When OFF: Data stays frozen at the last fetched state (for viewers watching behind live)
-- Visual indicator showing "Updates paused" when toggled off
+- Small "My Picks" button that expands a ranking area below the results table
+- Same drag-and-drop reordering, adapted for the dark theme and smaller width
+- Shows saved picks with medal indicators when collapsed
 
-### 6. Data Loading
+### 3. New Component: `RankingList.tsx`
 
-Fetch all events and entries for the meet (same pattern as `MeetDetailPage.tsx`):
-- Load meet by slug
-- Load active broadcast for the meet
-- Load all events ordered by `sort_order`
-- Load all entries per event with athlete joins
-- Polling interval (30s) controlled by the pause toggle
+A reusable drag-and-drop ranking component used in both contexts:
 
-### 7. Future-Ready: Vote/Rankings Placeholder
+- Accepts entries (athletes), current ranking, and save callback
+- Uses HTML5 drag-and-drop (no extra dependency needed) for simplicity
+- Touch-friendly: tap-to-select + move-up/move-down buttons as fallback for mobile
+- Visual states:
+  - Rank 1: Gold accent border + "1st" badge
+  - Rank 2: Silver accent border + "2nd" badge  
+  - Rank 3: Bronze accent border + "3rd" badge
+  - Rank 4+: Subtle numbered list
+- Login prompt shown for unauthenticated users
 
-Each athlete row in the sidebar will have a subtle right-aligned area (currently empty/disabled) that can later house vote buttons or ranking drag handles. No functionality now, just structural room in the layout.
+### 4. Data Service: `src/services/rankings.ts`
+
+Centralized data access following the project's backend portability pattern:
+
+- `getUserRankings(eventId)` -- fetch current user's ranking for an event
+- `getUserRankingsForMeet(meetId)` -- fetch all rankings for a meet's events (batch)
+- `saveRanking(eventId, rankedAthleteIds)` -- upsert ranking
+- `deleteRanking(eventId)` -- remove ranking
 
 ## Technical Details
 
-### Files Modified
+### New Files
+- `src/components/rankings/RankingList.tsx` -- drag-and-drop ranking component
+- `src/services/rankings.ts` -- data access layer for rankings
 
-**`src/App.tsx`**
-- Move the `/meets/:slug/watch` route outside the `PublicLayout` wrapper so it renders standalone without navbar/footer
+### Modified Files
+- `src/pages/public/MeetDetailPage.tsx` -- add ranking mode toggle per event
+- `src/components/broadcast/EventLineupCard.tsx` -- add "My Picks" section
+- `src/components/broadcast/BroadcastSidebar.tsx` -- pass auth state down
 
-**`src/pages/public/BroadcastPage.tsx`**
-- Complete rewrite to a fullscreen layout with:
-  - `100vh` viewport container, dark theme background
-  - Flexbox layout: player area + sidebar
-  - Top bar overlay with meet info and controls
-  - Sidebar state management (open/closed)
-  - Events + entries data fetching with polling
-  - Pause toggle using a `useRef` to skip refetch intervals
-  - Mobile detection via `useIsMobile()` hook
-  - Drawer integration for mobile sidebar
+### Database Migration
+- Create `event_rankings` table
+- Add RLS policies for authenticated user access
+- Add unique constraint on (user_id, event_id)
+- Add updated_at trigger
 
-### New Components (extracted within BroadcastPage or as siblings)
-
-**`src/components/broadcast/BroadcastSidebar.tsx`**
-- The sidebar panel content: header with pause toggle, scrollable event accordion list
-- Receives events, entries, paused state, and toggle handler as props
-- Reused in both the desktop panel and mobile drawer
-
-**`src/components/broadcast/EventLineupCard.tsx`**
-- Single event accordion item showing event info + athlete lineup table
-- Highlights "in_progress" events with a subtle accent border
-- Athlete rows with space reserved for future vote/rank actions
-
-### Existing Dependencies Used
-- `vaul` (Drawer) -- already installed, for mobile bottom sheet
-- `@mux/mux-player-react` -- already installed
-- `@radix-ui/react-switch` -- already installed, for pause toggle
-- `lucide-react` -- icons (PanelRight, Pause, Play, etc.)
-- `useIsMobile()` hook -- already exists
+### No New Dependencies
+Uses HTML5 native drag-and-drop API -- no external drag library needed. Mobile fallback uses up/down arrow buttons.
 
 ### Implementation Order
-1. Move broadcast route outside PublicLayout in App.tsx
-2. Create `BroadcastSidebar` and `EventLineupCard` components
-3. Rewrite `BroadcastPage` with fullscreen layout, sidebar toggle, data fetching with polling, and mobile drawer
+1. Create database migration for `event_rankings` table with RLS
+2. Create `src/services/rankings.ts` data service
+3. Build `RankingList.tsx` component with drag-and-drop + mobile fallback
+4. Integrate ranking mode into `MeetDetailPage.tsx`
+5. Integrate compact "My Picks" into `EventLineupCard.tsx` for broadcast sidebar
+
