@@ -54,7 +54,7 @@ export default function LoginPage() {
           </form>
           <p className="text-center text-sm text-muted-foreground mt-4">
             Don't have an account?{' '}
-            <Link to="/signup" className="text-primary hover:underline font-medium">Sign up</Link>
+            <Link to="/signup" state={{ from }} className="text-primary hover:underline font-medium">Sign up</Link>
           </p>
         </CardContent>
       </Card>
