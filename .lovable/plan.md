@@ -1,42 +1,60 @@
 
-# Touch Drag-and-Drop for Mobile
+# Diagnose and Fix Content Loading Reliability
 
-## Overview
+## Root Cause Analysis
 
-Replace the up/down arrow buttons with touch-based drag-and-drop using `touchstart`, `touchmove`, and `touchend` events. HTML5 drag events don't work on mobile browsers, so we need a custom touch implementation that mirrors the existing mouse drag behavior.
+After thorough investigation:
 
-## Changes
+- **Database**: Healthy. Contains 4 meets, 12 works, 1 banner, 24 events.
+- **RLS Policies**: Correct. All public tables have open SELECT policies.
+- **No console errors**: The app renders without errors -- queries just silently return nothing.
+- **Zero network requests**: The browser tool shows literally zero XHR/fetch requests being made, even after 10+ seconds across multiple page navigations. Even the auth `getSession()` call from AuthContext doesn't fire.
 
-### File: `src/components/rankings/RankingList.tsx`
+This points to an **intermittent environment issue** (the Supabase instance going to sleep or the preview sandbox having connectivity issues). The code itself is correct -- when requests go through, everything works.
 
-**Remove:**
-- The `ChevronUp` and `ChevronDown` imports from lucide-react
-- The `moveItem` function
-- The mobile arrow button block (lines 262-278) -- the `sm:hidden` div with up/down buttons
+However, the current code has a significant **resilience problem**: every data-fetching page uses the `.then()` pattern without error handling, and conditionally renders content with `{data.length > 0 && ...}`. When requests fail or hang, users see a blank page with no feedback.
 
-**Add touch drag handlers:**
-- `handleTouchStart(index, e)`: Record the starting touch Y position, snapshot the order into `preDragOrder`, set `dragIndex` state, and store the touched element's height for calculating positions
-- `handleTouchMove(e)`: Calculate which row index the finger is currently over by comparing `touch.clientY` against the container's row positions. If the target index changed, reorder the `order` array live (same logic as the existing `handleDragOver`)
-- `handleTouchEnd`: Finalize the drag, mark `hasChanges` if order changed, clear drag state
+## Plan: Add Error Handling and Loading States
 
-**Refs needed:**
-- `containerRef` (ref on the list container div) -- used to get bounding rects of child rows during touch move
-- `touchStartY` ref -- stores initial touch Y coordinate
-- `touchDragIndex` ref -- tracks which index the finger is currently over
+### 1. `src/pages/public/HomePage.tsx`
 
-**Row changes:**
-- Add `onTouchStart`, `onTouchMove`, `onTouchEnd` to each draggable row
-- On touch start, call `e.preventDefault()` to prevent scroll hijacking (only on the grip handle area to avoid blocking normal scroll on the row content)
-- The grip handle (`GripVertical`) becomes the touch target -- attach touch events specifically to it so users can still scroll the page by touching elsewhere on the row
+- Add a `loading` state (default `true`) that turns `false` after all fetches complete
+- Add `.catch()` handlers to each Supabase call to log errors and prevent silent failures
+- Show a skeleton/loading state while data is being fetched
+- If all sections are empty after loading completes, show a fallback message instead of a blank page
 
-**Visual feedback:**
-- Reuse the same `isBeingDragged` styling (`opacity-50 scale-[0.98] shadow-lg ring-2`) that already works for mouse drag
-- Rows animate with the existing `transition-all duration-150`
+### 2. `src/pages/public/MeetsPage.tsx`
 
-**Key detail -- preventing page scroll during drag:**
-- When the user starts dragging via the grip handle, we need `touch-action: none` on the row being dragged to prevent the browser from scrolling the page
-- Apply this inline style conditionally when `isBeingDragged` is true
+- Add `loading` state with a skeleton grid while fetching
+- Add `.catch()` error handling
+- Show "No meets found" only after loading is complete (currently shows it while data is still loading)
 
-### No new dependencies
+### 3. `src/pages/public/MeetDetailPage.tsx`
 
-Pure touch event handling -- no external drag library needed.
+- Already has a "Loading..." fallback, but add error handling to the Supabase calls
+- Add a retry mechanism or error state if the meet data fails to load
+
+### 4. `src/pages/dashboard/OverviewPage.tsx`
+
+- Add `loading` state (this is likely the "endless spinner" -- the dashboard layout renders but OverviewPage shows nothing while waiting)
+- Add `.catch()` handlers
+- Show skeleton cards while loading
+
+### 5. `src/contexts/AuthContext.tsx`
+
+- Add error handling to `getSession()`, `fetchProfile()`, and `fetchRole()` calls
+- Ensure `loading` is set to `false` even if requests fail (currently if `getSession()` hangs, `loading` stays `true` forever, causing the ProtectedRoute spinner to show indefinitely -- this is the dashboard endless spinner)
+
+## Technical Details
+
+- Use `Promise.allSettled()` instead of individual `.then()` calls where appropriate so one failed request doesn't block the others
+- Add `console.error` in catch blocks so failures are visible in logs for debugging
+- Add a timeout fallback: if loading takes more than 8 seconds, set loading to false and show whatever data arrived
+- Keep the conditional rendering but gate it behind `!loading` checks
+
+### Files Modified
+- `src/pages/public/HomePage.tsx`
+- `src/pages/public/MeetsPage.tsx`
+- `src/pages/public/MeetDetailPage.tsx`
+- `src/pages/dashboard/OverviewPage.tsx`
+- `src/contexts/AuthContext.tsx`
