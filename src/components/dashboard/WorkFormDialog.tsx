@@ -6,6 +6,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Form, FormField, FormItem, FormLabel, FormControl, FormMessage } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
+import RichTextEditor from '@/components/dashboard/RichTextEditor';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { supabase } from '@/integrations/supabase/client';
@@ -117,7 +118,7 @@ export default function WorkFormDialog({ open, onOpenChange, onSaved, initialDat
               <FormItem><FormLabel>Summary</FormLabel><FormControl><Textarea {...field} rows={2} /></FormControl><FormMessage /></FormItem>
             )} />
             <FormField control={form.control} name="body" render={({ field }) => (
-              <FormItem><FormLabel>Body</FormLabel><FormControl><Textarea {...field} rows={6} /></FormControl><FormMessage /></FormItem>
+              <FormItem><FormLabel>Body</FormLabel><FormControl><RichTextEditor value={field.value} onChange={field.onChange} /></FormControl><FormMessage /></FormItem>
             )} />
             <FormField control={form.control} name="cover_image_url" render={({ field }) => (
               <FormItem>
