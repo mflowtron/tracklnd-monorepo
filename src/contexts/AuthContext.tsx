@@ -29,54 +29,95 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   const fetchProfile = async (userId: string) => {
-    try {
-      const { data } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('user_id', userId)
-        .maybeSingle();
-      setProfile(data);
-    } catch (err) {
-      console.error('Auth: failed to fetch profile:', err);
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('user_id', userId)
+      .maybeSingle();
+    if (error) {
+      console.error('Auth: profile fetch error:', error.message);
+      return;
     }
+    setProfile(data);
   };
 
   const fetchRole = async (userId: string) => {
-    try {
-      const { data } = await supabase
-        .from('user_roles')
-        .select('role')
-        .eq('user_id', userId);
-      setIsAdmin(data?.some(r => r.role === 'admin') ?? false);
-    } catch (err) {
-      console.error('Auth: failed to fetch role:', err);
+    const { data, error } = await supabase
+      .from('user_roles')
+      .select('role')
+      .eq('user_id', userId);
+    if (error) {
+      console.error('Auth: role fetch error:', error.message);
+      return;
     }
+    setIsAdmin(data?.some(r => r.role === 'admin') ?? false);
   };
 
   useEffect(() => {
-    console.log('Auth: initializing...');
     let mounted = true;
 
-    // Fast initial check: getSession() reads from localStorage and resolves
-    // quickly even when the token is stale and needs refreshing. This avoids
-    // the race where onAuthStateChange is delayed by a token refresh and the
-    // user is briefly treated as unauthenticated.
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
-      if (!mounted) return;
-      const u = session?.user ?? null;
-      setUser(u);
-      if (u) {
-        await Promise.allSettled([fetchProfile(u.id), fetchRole(u.id)]);
-      }
-      if (mounted) setLoading(false);
-    });
+    const initAuth = async () => {
+      try {
+        // Read session from localStorage — may have an expired access token.
+        const { data: { session } } = await supabase.auth.getSession();
 
-    // Handle ongoing auth changes (token refresh, login, logout)
+        if (!session) {
+          // No stored session — user is not logged in.
+          if (mounted) setLoading(false);
+          return;
+        }
+
+        // Check whether the access token is expired (with 60 s buffer).
+        const now = Math.floor(Date.now() / 1000);
+        const needsRefresh = session.expires_at != null && now >= session.expires_at - 60;
+
+        let activeSession = session;
+
+        if (needsRefresh) {
+          // Token is stale — force a refresh so downstream queries never
+          // send an expired JWT (which causes PostgREST 401 on ALL tables).
+          const { data, error } = await supabase.auth.refreshSession();
+          if (error || !data.session) {
+            console.error('Auth: token refresh failed, signing out');
+            await supabase.auth.signOut();
+            if (mounted) {
+              setUser(null);
+              setProfile(null);
+              setIsAdmin(false);
+              setLoading(false);
+            }
+            return;
+          }
+          activeSession = data.session;
+        }
+
+        // We now have a valid session — set user and fetch profile/role.
+        if (mounted) {
+          setUser(activeSession.user);
+          await Promise.allSettled([
+            fetchProfile(activeSession.user.id),
+            fetchRole(activeSession.user.id),
+          ]);
+          setLoading(false);
+        }
+      } catch (err) {
+        console.error('Auth: initialization error:', err);
+        if (mounted) setLoading(false);
+      }
+    };
+
+    initAuth();
+
+    // Listen for ongoing auth changes (login, logout, token refresh).
+    // We skip INITIAL_SESSION because initAuth already handles it above.
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (_event, session) => {
+      async (event, session) => {
         if (!mounted) return;
+        if (event === 'INITIAL_SESSION') return;
+
         const u = session?.user ?? null;
         setUser(u);
+
         if (u) {
           await Promise.allSettled([fetchProfile(u.id), fetchRole(u.id)]);
         } else {

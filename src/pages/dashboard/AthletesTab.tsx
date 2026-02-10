@@ -1,9 +1,11 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { fetchWithRetry } from '@/lib/supabase-fetch';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Plus, Pencil, Trash2, Search, Upload, Download } from 'lucide-react';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Plus, Pencil, Trash2, Search, Upload, Download, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import type { Tables } from '@/integrations/supabase/types';
 import AthleteFormDialog from '@/components/dashboard/AthleteFormDialog';
@@ -29,11 +31,23 @@ export default function AthletesTab() {
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const loadAthletes = useCallback(async () => {
-    const { data } = await supabase.from('athletes').select('*').order('full_name');
-    setAthletes(data || []);
+    setLoading(true);
+    setError(false);
+    const { data, error: err } = await fetchWithRetry(
+      () => supabase.from('athletes').select('*').order('full_name')
+    );
+    if (err) {
+      console.error('AthletesTab: failed to load athletes:', err.message);
+      setError(true);
+    } else {
+      setAthletes(data || []);
+    }
+    setLoading(false);
   }, []);
 
   useEffect(() => { loadAthletes(); }, [loadAthletes]);
@@ -97,6 +111,20 @@ export default function AthletesTab() {
 
   const teams = new Set(athletes.map(a => a.team).filter(Boolean));
 
+  if (error && !loading) {
+    return (
+      <div>
+        <h2 className="text-2xl font-bold mb-6">Athletes</h2>
+        <div className="flex flex-col items-center justify-center min-h-[30vh] gap-4">
+          <p className="text-muted-foreground">Something went wrong loading athletes.</p>
+          <Button onClick={loadAthletes} variant="outline" size="sm">
+            <RefreshCw className="h-4 w-4 mr-2" /> Try Again
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
@@ -118,21 +146,19 @@ export default function AthletesTab() {
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 mb-6">
         <Card>
           <CardContent className="pt-4 pb-3">
-            <p className="text-2xl font-bold">{athletes.length}</p>
+            {loading ? <Skeleton className="h-8 w-12 mb-1" /> : <p className="text-2xl font-bold">{athletes.length}</p>}
             <p className="text-xs text-muted-foreground">Total Athletes</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-4 pb-3">
-            <p className="text-2xl font-bold">{teams.size}</p>
+            {loading ? <Skeleton className="h-8 w-12 mb-1" /> : <p className="text-2xl font-bold">{teams.size}</p>}
             <p className="text-xs text-muted-foreground">Teams / Clubs</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-4 pb-3">
-            <p className="text-2xl font-bold">
-              {new Set(athletes.map(a => a.country_code)).size}
-            </p>
+            {loading ? <Skeleton className="h-8 w-12 mb-1" /> : <p className="text-2xl font-bold">{new Set(athletes.map(a => a.country_code)).size}</p>}
             <p className="text-xs text-muted-foreground">Countries</p>
           </CardContent>
         </Card>
@@ -149,7 +175,7 @@ export default function AthletesTab() {
       </div>
 
       <div className="space-y-2">
-        {filtered.map(a => (
+        {loading ? [1, 2, 3].map(i => <Skeleton key={i} className="h-14 w-full rounded-lg" />) : filtered.map(a => (
           <div key={a.id} className="flex items-center gap-4 p-3 rounded-lg border bg-background hover:shadow-sm transition-shadow">
             <span className="text-xl flex-shrink-0">{a.country_flag}</span>
             <div className="flex-1 min-w-0">
@@ -167,7 +193,7 @@ export default function AthletesTab() {
             </div>
           </div>
         ))}
-        {filtered.length === 0 && (
+        {!loading && filtered.length === 0 && (
           <p className="text-center text-muted-foreground py-8 text-sm">
             {search ? 'No athletes match your search.' : 'No athletes yet.'}
           </p>

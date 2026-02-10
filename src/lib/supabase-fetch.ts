@@ -1,3 +1,5 @@
+import { supabase } from '@/integrations/supabase/client';
+
 export function withTimeout<T>(promise: PromiseLike<T>, ms = 10000): Promise<T> {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error(`Request timed out after ${ms}ms`)), ms);
@@ -8,6 +10,32 @@ export function withTimeout<T>(promise: PromiseLike<T>, ms = 10000): Promise<T> 
   });
 }
 
+/**
+ * Returns true when a Supabase PostgREST error looks like an auth/JWT
+ * problem. PostgREST returns 401 and rejects the *entire* request when the
+ * JWT is expired or malformed — even for tables with permissive RLS
+ * policies like USING(true).
+ */
+function isAuthError(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+  const msg = String((error as any).message || '').toLowerCase();
+  const code = String((error as any).code || '');
+  return (
+    msg.includes('jwt expired') ||
+    msg.includes('jwt') && msg.includes('invalid') ||
+    msg.includes('token is expired') ||
+    msg.includes('invalid claim') ||
+    code === 'PGRST301'
+  );
+}
+
+/**
+ * Wraps a Supabase query with timeout and retry logic.
+ *
+ * Unlike the previous version, this correctly handles Supabase responses
+ * which return { data, error } instead of throwing.  When a JWT/auth error
+ * is detected the helper forces a session refresh and retries the query.
+ */
 export async function fetchWithRetry<T>(
   fn: () => PromiseLike<T>,
   retries = 2,
@@ -15,8 +43,23 @@ export async function fetchWithRetry<T>(
 ): Promise<T> {
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
-      return await withTimeout(fn(), timeoutMs);
+      const result = await withTimeout(fn(), timeoutMs);
+
+      // Detect auth errors inside Supabase-style { data, error } responses.
+      const maybeError = (result as any)?.error;
+      if (maybeError && isAuthError(maybeError) && attempt < retries) {
+        console.warn(
+          `Auth error on attempt ${attempt + 1}/${retries + 1}, refreshing session and retrying…`
+        );
+        await supabase.auth.refreshSession();
+        // Small back-off so the refreshed token propagates.
+        await new Promise(r => setTimeout(r, 500 * (attempt + 1)));
+        continue;
+      }
+
+      return result;
     } catch (err) {
+      // Network/timeout errors — retry with exponential back-off.
       if (attempt === retries) throw err;
       await new Promise(r => setTimeout(r, 1000 * (attempt + 1)));
     }

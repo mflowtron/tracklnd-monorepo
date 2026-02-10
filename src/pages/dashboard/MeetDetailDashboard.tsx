@@ -1,11 +1,12 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
+import { fetchWithRetry } from '@/lib/supabase-fetch';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
-import { ArrowLeft, Calendar, MapPin, Plus, Pencil, Trash2, Users, ExternalLink, Video } from 'lucide-react';
+import { ArrowLeft, Calendar, MapPin, Plus, Pencil, Trash2, Users, ExternalLink, Video, RefreshCw } from 'lucide-react';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 import { Switch } from '@/components/ui/switch';
@@ -23,6 +24,7 @@ export default function MeetDetailDashboard() {
   const [events, setEvents] = useState<any[]>([]);
   const [entriesByEvent, setEntriesByEvent] = useState<Record<string, any[]>>({});
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
 
   // Meet edit
   const [meetFormOpen, setMeetFormOpen] = useState(false);
@@ -35,8 +37,6 @@ export default function MeetDetailDashboard() {
   const [deleteEventId, setDeleteEventId] = useState<string | null>(null);
   const [deletingEvent, setDeletingEvent] = useState(false);
 
-  // Entry delete (kept for legacy, spreadsheet handles its own deletes now)
-
   // Broadcasts
   const [broadcasts, setBroadcasts] = useState<any[]>([]);
   const [broadcastFormOpen, setBroadcastFormOpen] = useState(false);
@@ -47,20 +47,38 @@ export default function MeetDetailDashboard() {
   const loadData = useCallback(async () => {
     if (!id) return;
     setLoading(true);
-    const { data: meetData } = await supabase.from('meets').select('*').eq('id', id).maybeSingle();
+    setError(false);
+
+    const { data: meetData, error: meetErr } = await fetchWithRetry(
+      () => supabase.from('meets').select('*').eq('id', id).maybeSingle()
+    );
+    if (meetErr) {
+      console.error('MeetDetail: failed to load meet:', meetErr.message);
+      setError(true);
+      setLoading(false);
+      return;
+    }
     setMeet(meetData);
     if (!meetData) { setLoading(false); return; }
 
     // Fetch events+entries (nested) and broadcasts in parallel
     const [eventsResult, bcResult] = await Promise.all([
-      supabase
-        .from('events')
-        .select('*, event_entries(*, athletes(*))')
-        .eq('meet_id', id)
-        .order('sort_order')
-        .order('place', { referencedTable: 'event_entries', ascending: true, nullsFirst: false }),
-      supabase.from('broadcasts' as any).select('*').eq('meet_id', id).order('created_at'),
+      fetchWithRetry(() =>
+        supabase
+          .from('events')
+          .select('*, event_entries(*, athletes(*))')
+          .eq('meet_id', id)
+          .order('sort_order')
+          .order('place', { referencedTable: 'event_entries', ascending: true, nullsFirst: false })
+      ),
+      fetchWithRetry(() =>
+        supabase.from('broadcasts' as any).select('*').eq('meet_id', id).order('created_at')
+      ),
     ]);
+
+    if (eventsResult.error) {
+      console.error('MeetDetail: failed to load events:', eventsResult.error.message);
+    }
 
     const evts = eventsResult.data || [];
     setEvents(evts);
@@ -72,7 +90,6 @@ export default function MeetDetailDashboard() {
     setEntriesByEvent(newEntries);
 
     setBroadcasts(bcResult.data || []);
-
     setLoading(false);
   }, [id]);
 
@@ -118,6 +135,16 @@ export default function MeetDetailDashboard() {
   };
 
   if (loading) return <div className="flex items-center justify-center min-h-[50vh] text-muted-foreground">Loading…</div>;
+
+  if (error) return (
+    <div className="flex flex-col items-center justify-center min-h-[50vh] gap-4">
+      <p className="text-muted-foreground">Something went wrong loading this meet.</p>
+      <Button onClick={loadData} variant="outline" size="sm">
+        <RefreshCw className="h-4 w-4 mr-2" /> Try Again
+      </Button>
+    </div>
+  );
+
   if (!meet) return (
     <div className="flex flex-col items-center justify-center min-h-[50vh] gap-4">
       <p className="text-muted-foreground">Meet not found.</p>
@@ -135,13 +162,6 @@ export default function MeetDetailDashboard() {
   };
 
   const genderLabel = (g: string) => g === 'men' ? 'M' : g === 'women' ? 'W' : 'X';
-
-  const medalEmoji = (place: number | null) => {
-    if (place === 1) return '🥇';
-    if (place === 2) return '🥈';
-    if (place === 3) return '🥉';
-    return '';
-  };
 
   return (
     <div>
@@ -312,7 +332,7 @@ export default function MeetDetailDashboard() {
       )}
       <DeleteConfirmDialog open={deleteMeetOpen} onOpenChange={setDeleteMeetOpen} onConfirm={handleDeleteMeet} loading={deletingMeet} title="Delete Meet?" description="This will permanently delete this meet and all its events and entries." />
       <DeleteConfirmDialog open={!!deleteEventId} onOpenChange={o => !o && setDeleteEventId(null)} onConfirm={handleDeleteEvent} loading={deletingEvent} title="Delete Event?" description="This will delete the event and all its entries." />
-      
+
       <DeleteConfirmDialog open={!!deleteBroadcastId} onOpenChange={o => !o && setDeleteBroadcastId(null)} onConfirm={handleDeleteBroadcast} loading={deletingBroadcast} title="Delete Broadcast?" description="This will remove this broadcast from the meet." />
       {meet && <BroadcastFormDialog open={broadcastFormOpen} onOpenChange={setBroadcastFormOpen} onSaved={loadData} meetId={meet.id} initialData={editingBroadcast} />}
     </div>
