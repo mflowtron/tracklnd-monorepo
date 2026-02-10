@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import type { User } from '@supabase/supabase-js';
-import { withTimeout } from '@/lib/supabase-fetch';
+import { fetchWithRetry } from '@/lib/supabase-fetch';
 
 interface Profile {
   id: string;
@@ -31,8 +31,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const fetchProfile = async (userId: string) => {
     try {
-      const { data } = await withTimeout(
-        supabase.from('profiles').select('*').eq('user_id', userId).maybeSingle()
+      const { data } = await fetchWithRetry(
+        () => supabase.from('profiles').select('*').eq('user_id', userId).maybeSingle()
       );
       setProfile(data);
     } catch (err) {
@@ -42,8 +42,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const fetchRole = async (userId: string) => {
     try {
-      const { data } = await withTimeout(
-        supabase.from('user_roles').select('role').eq('user_id', userId)
+      const { data } = await fetchWithRetry(
+        () => supabase.from('user_roles').select('role').eq('user_id', userId)
       );
       setIsAdmin(data?.some(r => r.role === 'admin') ?? false);
     } catch (err) {
@@ -70,7 +70,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setLoading(false);
     });
 
-    withTimeout(supabase.auth.getSession()).then(({ data: { session } }) => {
+    fetchWithRetry(() => supabase.auth.getSession()).then(({ data: { session } }) => {
       console.log('Auth: session resolved', !!session);
       const u = session?.user ?? null;
       setUser(u);
