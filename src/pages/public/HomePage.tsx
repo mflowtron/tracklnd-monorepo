@@ -5,6 +5,7 @@ import { ArrowRight, Mail } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import { Skeleton } from '@/components/ui/skeleton';
 import { format } from 'date-fns';
 import useEmblaCarousel from 'embla-carousel-react';
 import Autoplay from 'embla-carousel-autoplay';
@@ -16,15 +17,18 @@ export default function HomePage() {
   const [upcomingMeets, setUpcomingMeets] = useState<any[]>([]);
   const [recentWorks, setRecentWorks] = useState<any[]>([]);
   const [email, setEmail] = useState('');
+  const [loading, setLoading] = useState(true);
 
   const [shortsRef] = useEmblaCarousel({ loop: true, align: 'start' }, [Autoplay({ delay: 4000 })]);
   const [worksRef] = useEmblaCarousel({ loop: false, align: 'start', slidesToScroll: 1 });
 
   useEffect(() => {
-    supabase.from('banners').select('*').eq('placement', 'homepage').eq('is_active', true).limit(1).maybeSingle().then(({ data }) => setBanner(data));
-    supabase.from('works').select('*').eq('work_type', 'short').eq('status', 'published').order('published_at', { ascending: false }).limit(6).then(({ data }) => setShorts(data || []));
-    supabase.from('meets').select('*').in('status', ['upcoming', 'live']).order('start_date', { ascending: true }).limit(4).then(({ data }) => setUpcomingMeets(data || []));
-    supabase.from('works').select('*').in('work_type', ['work', 'feature']).eq('status', 'published').order('published_at', { ascending: false }).limit(6).then(({ data }) => setRecentWorks(data || []));
+    Promise.allSettled([
+      supabase.from('banners').select('*').eq('placement', 'homepage').eq('is_active', true).limit(1).maybeSingle().then(({ data }) => setBanner(data)),
+      supabase.from('works').select('*').eq('work_type', 'short').eq('status', 'published').order('published_at', { ascending: false }).limit(6).then(({ data }) => setShorts(data || [])),
+      supabase.from('meets').select('*').in('status', ['upcoming', 'live']).order('start_date', { ascending: true }).limit(4).then(({ data }) => setUpcomingMeets(data || [])),
+      supabase.from('works').select('*').in('work_type', ['work', 'feature']).eq('status', 'published').order('published_at', { ascending: false }).limit(6).then(({ data }) => setRecentWorks(data || [])),
+    ]).catch(err => console.error('HomePage fetch error:', err)).finally(() => setLoading(false));
   }, []);
 
   const handleSubscribe = async () => {
@@ -44,6 +48,20 @@ export default function HomePage() {
     if (s === 'upcoming') return 'bg-primary text-primary-foreground';
     return 'bg-muted text-muted-foreground';
   };
+
+  if (loading) {
+    return (
+      <div>
+        <Skeleton className="h-[70vh] min-h-[500px] w-full rounded-none" />
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 space-y-4">
+          <Skeleton className="h-8 w-48" />
+          <div className="flex gap-4">
+            {[1, 2, 3].map(i => <Skeleton key={i} className="w-[320px] sm:w-[400px] aspect-[16/10] rounded-lg flex-shrink-0" />)}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -77,11 +95,7 @@ export default function HomePage() {
           <div className="overflow-hidden" ref={shortsRef}>
             <div className="flex gap-4">
               {shorts.map(s => (
-                <Link
-                  key={s.id}
-                  to={`/works/${s.slug}`}
-                  className="flex-shrink-0 w-[320px] sm:w-[400px] group"
-                >
+                <Link key={s.id} to={`/works/${s.slug}`} className="flex-shrink-0 w-[320px] sm:w-[400px] group">
                   <div className="relative aspect-[16/10] rounded-lg overflow-hidden">
                     <img src={s.cover_image_url} alt={s.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
                     <div className="absolute inset-0 bg-gradient-to-t from-black/70 to-transparent" />
@@ -102,13 +116,7 @@ export default function HomePage() {
               <span>Get Weekly Shorts in your inbox</span>
             </div>
             <div className="flex gap-2 w-full sm:w-auto">
-              <Input
-                type="email"
-                placeholder="you@email.com"
-                value={email}
-                onChange={e => setEmail(e.target.value)}
-                className="sm:w-64"
-              />
+              <Input type="email" placeholder="you@email.com" value={email} onChange={e => setEmail(e.target.value)} className="sm:w-64" />
               <Button onClick={handleSubscribe} size="sm">Subscribe</Button>
             </div>
           </div>
@@ -121,31 +129,20 @@ export default function HomePage() {
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
             <div className="flex items-center justify-between mb-8">
               <h2 className="font-display text-2xl sm:text-3xl">Upcoming Meets</h2>
-              <Link to="/meets" className="flex items-center gap-1 text-sm font-medium text-primary hover:underline">
-                View all <ArrowRight className="h-4 w-4" />
-              </Link>
+              <Link to="/meets" className="flex items-center gap-1 text-sm font-medium text-primary hover:underline">View all <ArrowRight className="h-4 w-4" /></Link>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
               {upcomingMeets.map(m => (
-                <Link
-                  key={m.id}
-                  to={`/meets/${m.slug}`}
-                  className="group bg-background rounded-lg border border-border overflow-hidden hover:shadow-lg transition-shadow"
-                >
+                <Link key={m.id} to={`/meets/${m.slug}`} className="group bg-background rounded-lg border border-border overflow-hidden hover:shadow-lg transition-shadow">
                   {m.hero_image_url && (
                     <div className="aspect-[16/9] overflow-hidden">
                       <img src={m.hero_image_url} alt={m.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
                     </div>
                   )}
                   <div className="p-5">
-                    <div className="flex items-center gap-2 mb-2">
-                      <Badge className={statusColor(m.status)}>{m.status}</Badge>
-                    </div>
+                    <div className="flex items-center gap-2 mb-2"><Badge className={statusColor(m.status)}>{m.status}</Badge></div>
                     <h3 className="font-semibold text-lg mb-1">{m.name}</h3>
-                    <p className="text-sm text-muted-foreground">
-                      {format(new Date(m.start_date), 'MMM d, yyyy')}
-                      {m.end_date && ` – ${format(new Date(m.end_date), 'MMM d, yyyy')}`}
-                    </p>
+                    <p className="text-sm text-muted-foreground">{format(new Date(m.start_date), 'MMM d, yyyy')}{m.end_date && ` – ${format(new Date(m.end_date), 'MMM d, yyyy')}`}</p>
                     <p className="text-sm text-muted-foreground">{m.venue}, {m.location}</p>
                   </div>
                 </Link>
@@ -160,18 +157,12 @@ export default function HomePage() {
         <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
           <div className="flex items-center justify-between mb-8">
             <h2 className="font-display text-2xl sm:text-3xl">Recent Works</h2>
-            <Link to="/works" className="flex items-center gap-1 text-sm font-medium text-primary hover:underline">
-              View all <ArrowRight className="h-4 w-4" />
-            </Link>
+            <Link to="/works" className="flex items-center gap-1 text-sm font-medium text-primary hover:underline">View all <ArrowRight className="h-4 w-4" /></Link>
           </div>
           <div className="overflow-hidden" ref={worksRef}>
             <div className="flex gap-6">
               {recentWorks.map(w => (
-                <Link
-                  key={w.id}
-                  to={`/works/${w.slug}`}
-                  className="flex-shrink-0 w-[300px] sm:w-[360px] group"
-                >
+                <Link key={w.id} to={`/works/${w.slug}`} className="flex-shrink-0 w-[300px] sm:w-[360px] group">
                   <div className="aspect-[4/3] rounded-lg overflow-hidden mb-3">
                     <img src={w.cover_image_url} alt={w.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
                   </div>
@@ -189,9 +180,7 @@ export default function HomePage() {
       {/* 5. About Us */}
       <section className="bg-secondary/50">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-20 text-center">
-          <h2 className="font-display text-3xl sm:text-4xl lg:text-5xl mb-6">
-            Our Motley Crew Is Creating the Modern Home of Racing
-          </h2>
+          <h2 className="font-display text-3xl sm:text-4xl lg:text-5xl mb-6">Our Motley Crew Is Creating the Modern Home of Racing</h2>
           <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
             Tracklnd exists to elevate track and field storytelling. We believe the sport deserves
             the same cinematic treatment, editorial depth, and passionate community that other major
