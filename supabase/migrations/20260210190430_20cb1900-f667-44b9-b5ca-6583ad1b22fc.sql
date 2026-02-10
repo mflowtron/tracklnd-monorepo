@@ -21,7 +21,7 @@ CREATE TABLE public.prize_purse_configs (
 
 ALTER TABLE public.prize_purse_configs ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "Admins can select prize_purse_configs" ON public.prize_purse_configs FOR SELECT USING (public.has_role(auth.uid(), 'admin'));
+CREATE POLICY "Anyone can read prize_purse_configs" ON public.prize_purse_configs FOR SELECT USING (true);
 CREATE POLICY "Admins can insert prize_purse_configs" ON public.prize_purse_configs FOR INSERT WITH CHECK (public.has_role(auth.uid(), 'admin'));
 CREATE POLICY "Admins can update prize_purse_configs" ON public.prize_purse_configs FOR UPDATE USING (public.has_role(auth.uid(), 'admin'));
 CREATE POLICY "Admins can delete prize_purse_configs" ON public.prize_purse_configs FOR DELETE USING (public.has_role(auth.uid(), 'admin'));
@@ -40,7 +40,7 @@ CREATE TABLE public.event_purse_allocations (
 
 ALTER TABLE public.event_purse_allocations ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "Admins can select event_purse_allocations" ON public.event_purse_allocations FOR SELECT USING (public.has_role(auth.uid(), 'admin'));
+CREATE POLICY "Anyone can read event_purse_allocations" ON public.event_purse_allocations FOR SELECT USING (true);
 CREATE POLICY "Admins can insert event_purse_allocations" ON public.event_purse_allocations FOR INSERT WITH CHECK (public.has_role(auth.uid(), 'admin'));
 CREATE POLICY "Admins can update event_purse_allocations" ON public.event_purse_allocations FOR UPDATE USING (public.has_role(auth.uid(), 'admin'));
 CREATE POLICY "Admins can delete event_purse_allocations" ON public.event_purse_allocations FOR DELETE USING (public.has_role(auth.uid(), 'admin'));
@@ -57,7 +57,7 @@ CREATE TABLE public.place_purse_allocations (
 
 ALTER TABLE public.place_purse_allocations ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "Admins can select place_purse_allocations" ON public.place_purse_allocations FOR SELECT USING (public.has_role(auth.uid(), 'admin'));
+CREATE POLICY "Anyone can read place_purse_allocations" ON public.place_purse_allocations FOR SELECT USING (true);
 CREATE POLICY "Admins can insert place_purse_allocations" ON public.place_purse_allocations FOR INSERT WITH CHECK (public.has_role(auth.uid(), 'admin'));
 CREATE POLICY "Admins can update place_purse_allocations" ON public.place_purse_allocations FOR UPDATE USING (public.has_role(auth.uid(), 'admin'));
 CREATE POLICY "Admins can delete place_purse_allocations" ON public.place_purse_allocations FOR DELETE USING (public.has_role(auth.uid(), 'admin'));
