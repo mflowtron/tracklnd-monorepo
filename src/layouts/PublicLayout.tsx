@@ -1,6 +1,6 @@
 import { Link, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
-import { Instagram, Mail, MapPin, Menu, X, User } from 'lucide-react';
+import { Instagram, Mail, MapPin, Menu, X, User, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -9,7 +9,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { useState } from 'react';
+import { Suspense, useState } from 'react';
 
 const navLinks = [
   { label: 'Meets', to: '/meets' },
@@ -50,9 +50,7 @@ export default function PublicLayout() {
           </nav>
 
           <div className="hidden md:flex items-center gap-3">
-            {loading ? (
-              <div className="h-8 w-8" /> /* placeholder while auth resolves */
-            ) : isAuthenticated ? (
+            {isAuthenticated ? (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="ghost" size="icon" className="rounded-full">
@@ -73,10 +71,12 @@ export default function PublicLayout() {
                   <DropdownMenuItem onClick={() => logout()}>Sign Out</DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
-            ) : (
+            ) : !loading ? (
               <Button asChild size="sm">
                 <Link to="/login">Sign In</Link>
               </Button>
+            ) : (
+              <div className="h-8 w-16" />
             )}
           </div>
 
@@ -99,22 +99,28 @@ export default function PublicLayout() {
                 {link.label}
               </Link>
             ))}
-            {loading ? null : isAuthenticated ? (
+            {isAuthenticated ? (
               <>
                 <Link to="/dashboard" className="block text-sm font-medium" onClick={() => setMobileOpen(false)}>Dashboard</Link>
                 <Link to="/account" className="block text-sm font-medium" onClick={() => setMobileOpen(false)}>Account</Link>
                 <button className="block text-sm font-medium text-destructive" onClick={() => { logout(); setMobileOpen(false); }}>Sign Out</button>
               </>
-            ) : (
+            ) : !loading ? (
               <Link to="/login" className="block text-sm font-medium text-primary" onClick={() => setMobileOpen(false)}>Sign In</Link>
-            )}
+            ) : null}
           </div>
         )}
       </header>
 
       {/* Main content */}
       <main className="flex-1 text-[15px]">
-        <Outlet />
+        <Suspense fallback={
+          <div className="flex min-h-[50vh] items-center justify-center">
+            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          </div>
+        }>
+          <Outlet />
+        </Suspense>
       </main>
 
       {/* Footer */}
