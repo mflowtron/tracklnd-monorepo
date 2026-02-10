@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import type { Tables } from '@/integrations/supabase/types';
+import ImageUpload from '@/components/dashboard/ImageUpload';
 
 const schema = z.object({
   title: z.string().trim().min(1, 'Required').max(300),
@@ -119,7 +120,12 @@ export default function WorkFormDialog({ open, onOpenChange, onSaved, initialDat
               <FormItem><FormLabel>Body</FormLabel><FormControl><Textarea {...field} rows={6} /></FormControl><FormMessage /></FormItem>
             )} />
             <FormField control={form.control} name="cover_image_url" render={({ field }) => (
-              <FormItem><FormLabel>Cover Image URL</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>
+              <FormItem>
+                <FormControl>
+                  <ImageUpload bucket="work-images" value={field.value || ''} onChange={field.onChange} label="Cover Image" />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
             )} />
             <FormField control={form.control} name="tags" render={({ field }) => (
               <FormItem><FormLabel>Tags (comma-separated)</FormLabel><FormControl><Input {...field} placeholder="track, portland, recap" /></FormControl><FormMessage /></FormItem>
