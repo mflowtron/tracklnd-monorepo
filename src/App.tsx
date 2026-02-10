@@ -30,6 +30,7 @@ const ContentTab = lazy(() => import("@/pages/dashboard/ContentTab"));
 const UsersTab = lazy(() => import("@/pages/dashboard/UsersTab"));
 const BannersTab = lazy(() => import("@/pages/dashboard/BannersTab"));
 const AthletesTab = lazy(() => import("@/pages/dashboard/AthletesTab"));
+const PrizePursePage = lazy(() => import("@/pages/PrizePursePage"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 
 function PageFallback() {
@@ -51,8 +52,9 @@ const App = () => (
         <BrowserRouter>
           <Suspense fallback={<PageFallback />}>
             <Routes>
-              {/* Standalone broadcast route (no layout wrapper) */}
+              {/* Standalone routes (no layout wrapper) */}
               <Route path="/meets/:slug/watch" element={<BroadcastPage />} />
+              <Route path="/meet/:meetId/prize-purse" element={<PrizePursePage />} />
 
               {/* Public routes */}
               <Route element={<PublicLayout />}>

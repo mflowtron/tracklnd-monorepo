@@ -14,6 +14,7 @@ import EventFormDialog from '@/components/dashboard/EventFormDialog';
 import EntrySpreadsheet from '@/components/dashboard/EntrySpreadsheet';
 import DeleteConfirmDialog from '@/components/dashboard/DeleteConfirmDialog';
 import BroadcastFormDialog from '@/components/dashboard/BroadcastFormDialog';
+import PrizePurseAdmin from '@/components/prize-purse/PrizePurseAdmin';
 
 export default function MeetDetailDashboard() {
   const { id } = useParams();
@@ -241,6 +242,16 @@ export default function MeetDetailDashboard() {
           ))}
         </div>
       )}
+
+      {/* Prize Purse section */}
+      <div className="mb-4">
+        <h3 className="text-xl font-semibold flex items-center gap-2 mb-4">
+          Prize Purse
+        </h3>
+        <PrizePurseAdmin meetId={meet.id} events={events.map((e: any) => ({ id: e.id, name: e.name, gender: e.gender }))} />
+      </div>
+
+      <div className="my-8" />
 
       {/* Events section */}
       <div className="flex items-center justify-between mb-4">
