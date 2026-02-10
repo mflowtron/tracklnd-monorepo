@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { fetchWithRetry } from '@/lib/supabase-fetch';
 import type { User } from '@supabase/supabase-js';
 
 interface Profile {
@@ -29,11 +30,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   const fetchProfile = async (userId: string) => {
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('user_id', userId)
-      .maybeSingle();
+    const { data, error } = await fetchWithRetry(
+      () => supabase.from('profiles').select('*').eq('user_id', userId).maybeSingle()
+    );
     if (error) {
       console.error('Auth: profile fetch error:', error.message);
       return;
@@ -42,10 +41,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const fetchRole = async (userId: string) => {
-    const { data, error } = await supabase
-      .from('user_roles')
-      .select('role')
-      .eq('user_id', userId);
+    const { data, error } = await fetchWithRetry(
+      () => supabase.from('user_roles').select('role').eq('user_id', userId)
+    );
     if (error) {
       console.error('Auth: role fetch error:', error.message);
       return;

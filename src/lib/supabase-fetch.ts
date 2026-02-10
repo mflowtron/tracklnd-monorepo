@@ -30,6 +30,37 @@ function isAuthError(error: unknown): boolean {
 }
 
 /**
+ * Deduplicates concurrent refreshSession() calls.  When multiple queries
+ * detect an expired JWT at the same time, only one refresh actually runs;
+ * all callers await the same promise.
+ */
+let refreshPromise: Promise<boolean> | null = null;
+
+function refreshSessionOnce(): Promise<boolean> {
+  if (refreshPromise) return refreshPromise;
+
+  refreshPromise = supabase.auth
+    .refreshSession()
+    .then(({ data, error }) => {
+      refreshPromise = null;
+      if (error || !data.session) {
+        console.error('fetchWithRetry: session refresh failed, signing out');
+        supabase.auth.signOut();
+        return false;
+      }
+      return true;
+    })
+    .catch((err) => {
+      refreshPromise = null;
+      console.error('fetchWithRetry: session refresh threw:', err);
+      supabase.auth.signOut();
+      return false;
+    });
+
+  return refreshPromise;
+}
+
+/**
  * Wraps a Supabase query with timeout and retry logic.
  *
  * Unlike the previous version, this correctly handles Supabase responses
@@ -51,7 +82,12 @@ export async function fetchWithRetry<T>(
         console.warn(
           `Auth error on attempt ${attempt + 1}/${retries + 1}, refreshing session and retrying…`
         );
-        await supabase.auth.refreshSession();
+        const refreshed = await refreshSessionOnce();
+        if (!refreshed) {
+          // Refresh failed and user was signed out — return the error as-is
+          // so callers see the original auth error instead of retrying forever.
+          return result;
+        }
         // Small back-off so the refreshed token propagates.
         await new Promise(r => setTimeout(r, 500 * (attempt + 1)));
         continue;
