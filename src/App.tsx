@@ -18,6 +18,7 @@ import SignupPage from "@/pages/public/SignupPage";
 import AccountPage from "@/pages/public/AccountPage";
 import OverviewPage from "@/pages/dashboard/OverviewPage";
 import MeetsTab from "@/pages/dashboard/MeetsTab";
+import MeetDetailDashboard from "@/pages/dashboard/MeetDetailDashboard";
 import ContentTab from "@/pages/dashboard/ContentTab";
 import UsersTab from "@/pages/dashboard/UsersTab";
 import BannersTab from "@/pages/dashboard/BannersTab";
@@ -53,6 +54,7 @@ const App = () => (
               <Route index element={<Navigate to="/dashboard/overview" replace />} />
               <Route path="overview" element={<OverviewPage />} />
               <Route path="meets" element={<MeetsTab />} />
+              <Route path="meets/:id" element={<MeetDetailDashboard />} />
               <Route path="content" element={<ContentTab />} />
               <Route path="athletes" element={<AthletesTab />} />
               <Route path="users" element={<AdminRoute><UsersTab /></AdminRoute>} />

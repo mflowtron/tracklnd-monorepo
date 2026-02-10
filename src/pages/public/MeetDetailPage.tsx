@@ -4,33 +4,14 @@ import { supabase } from '@/integrations/supabase/client';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
-import { ExternalLink, Tv, Users, Plus, Pencil, Trash2, UserPlus } from 'lucide-react';
+import { ExternalLink, Tv, Users } from 'lucide-react';
 import { format } from 'date-fns';
-import { toast } from 'sonner';
-import { useAuth } from '@/contexts/AuthContext';
-import EventFormDialog from '@/components/dashboard/EventFormDialog';
-import EntryFormDialog from '@/components/dashboard/EntryFormDialog';
-import DeleteConfirmDialog from '@/components/dashboard/DeleteConfirmDialog';
 
 export default function MeetDetailPage() {
   const { slug } = useParams();
-  const { isAdmin } = useAuth();
   const [meet, setMeet] = useState<any>(null);
   const [events, setEvents] = useState<any[]>([]);
   const [entriesByEvent, setEntriesByEvent] = useState<Record<string, any[]>>({});
-
-  // Event CRUD state
-  const [eventFormOpen, setEventFormOpen] = useState(false);
-  const [editingEvent, setEditingEvent] = useState<any>(null);
-  const [deleteEventId, setDeleteEventId] = useState<string | null>(null);
-  const [deletingEvent, setDeletingEvent] = useState(false);
-
-  // Entry CRUD state
-  const [entryFormOpen, setEntryFormOpen] = useState(false);
-  const [entryEventId, setEntryEventId] = useState<string>('');
-  const [editingEntry, setEditingEntry] = useState<any>(null);
-  const [deleteEntryId, setDeleteEntryId] = useState<string | null>(null);
-  const [deletingEntry, setDeletingEntry] = useState(false);
 
   const loadMeetData = useCallback(async () => {
     if (!slug) return;
@@ -56,29 +37,6 @@ export default function MeetDetailPage() {
   }, [slug]);
 
   useEffect(() => { loadMeetData(); }, [loadMeetData]);
-
-  // Delete handlers
-  const handleDeleteEvent = async () => {
-    if (!deleteEventId) return;
-    setDeletingEvent(true);
-    const { error } = await supabase.from('events').delete().eq('id', deleteEventId);
-    setDeletingEvent(false);
-    if (error) { toast.error(error.message); return; }
-    toast.success('Event deleted');
-    setDeleteEventId(null);
-    loadMeetData();
-  };
-
-  const handleDeleteEntry = async () => {
-    if (!deleteEntryId) return;
-    setDeletingEntry(true);
-    const { error } = await supabase.from('event_entries').delete().eq('id', deleteEntryId);
-    setDeletingEntry(false);
-    if (error) { toast.error(error.message); return; }
-    toast.success('Entry deleted');
-    setDeleteEntryId(null);
-    loadMeetData();
-  };
 
   if (!meet) return <div className="flex items-center justify-center min-h-[50vh] text-muted-foreground">Loading...</div>;
 
@@ -137,14 +95,12 @@ export default function MeetDetailPage() {
       </section>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-        {/* Meet Info */}
         {meet.description && (
           <div className="max-w-3xl mb-10">
             <p className="text-lg leading-relaxed text-foreground/80">{meet.description}</p>
           </div>
         )}
 
-        {/* Broadcast card */}
         {meet.broadcast_partner && (
           <div className="mb-10 p-6 rounded-lg bg-primary/5 border border-primary/20 flex flex-col sm:flex-row items-start sm:items-center gap-4">
             <div className="flex items-center gap-3">
@@ -166,15 +122,8 @@ export default function MeetDetailPage() {
           </div>
         )}
 
-        {/* Events Accordion */}
-        <div className="flex items-center justify-between mb-6">
-          <h2 className="font-display text-2xl sm:text-3xl">Events</h2>
-          {isAdmin && (
-            <Button size="sm" onClick={() => { setEditingEvent(null); setEventFormOpen(true); }}>
-              <Plus className="h-4 w-4 mr-1" /> Add Event
-            </Button>
-          )}
-        </div>
+        {/* Events */}
+        <h2 className="font-display text-2xl sm:text-3xl mb-6">Events</h2>
         <Accordion type="multiple" className="space-y-2">
           {events.map(evt => {
             const entries = entriesByEvent[evt.id] || [];
@@ -192,21 +141,6 @@ export default function MeetDetailPage() {
                   </div>
                 </AccordionTrigger>
                 <AccordionContent>
-                  {/* Admin event actions */}
-                  {isAdmin && (
-                    <div className="flex items-center gap-2 mb-3 pb-3 border-b">
-                      <Button size="sm" variant="outline" onClick={() => { setEditingEvent(evt); setEventFormOpen(true); }}>
-                        <Pencil className="h-3 w-3 mr-1" /> Edit Event
-                      </Button>
-                      <Button size="sm" variant="outline" onClick={() => setDeleteEventId(evt.id)}>
-                        <Trash2 className="h-3 w-3 mr-1 text-destructive" /> Delete Event
-                      </Button>
-                      <Button size="sm" variant="outline" className="ml-auto" onClick={() => { setEntryEventId(evt.id); setEditingEntry(null); setEntryFormOpen(true); }}>
-                        <UserPlus className="h-3 w-3 mr-1" /> Add Entry
-                      </Button>
-                    </div>
-                  )}
-
                   {entries.length === 0 ? (
                     <p className="text-sm text-muted-foreground py-2">No entries yet.</p>
                   ) : (
@@ -220,41 +154,19 @@ export default function MeetDetailPage() {
                             <th className="py-2 pr-3">Team</th>
                             <th className="py-2 pr-3 font-mono">Result</th>
                             <th className="py-2 w-12"></th>
-                            {isAdmin && <th className="py-2 w-20"></th>}
                           </tr>
                         </thead>
                         <tbody>
                           {entries.map(entry => (
-                            <tr
-                              key={entry.id}
-                              className={`border-b last:border-0 ${
-                                entry.place && entry.place <= 3 ? 'bg-amber-50/50' : ''
-                              }`}
-                            >
-                              <td className="py-2.5 pr-3 font-medium">
-                                {medalEmoji(entry.place)} {entry.place || '–'}
-                              </td>
+                            <tr key={entry.id} className={`border-b last:border-0 ${entry.place && entry.place <= 3 ? 'bg-amber-50/50' : ''}`}>
+                              <td className="py-2.5 pr-3 font-medium">{medalEmoji(entry.place)} {entry.place || '–'}</td>
                               <td className="py-2.5 pr-3 font-medium">{entry.athletes?.full_name}</td>
                               <td className="py-2.5 pr-3">{entry.athletes?.country_flag}</td>
                               <td className="py-2.5 pr-3 text-muted-foreground">{entry.athletes?.team}</td>
                               <td className="py-2.5 pr-3 font-mono font-medium">{entry.result || '–'}</td>
                               <td className="py-2.5">
-                                {entry.is_pb && (
-                                  <Badge className="bg-emerald-100 text-emerald-700 text-[10px]">PB</Badge>
-                                )}
+                                {entry.is_pb && <Badge className="bg-emerald-100 text-emerald-700 text-[10px]">PB</Badge>}
                               </td>
-                              {isAdmin && (
-                                <td className="py-2.5">
-                                  <div className="flex items-center gap-1">
-                                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => { setEntryEventId(evt.id); setEditingEntry(entry); setEntryFormOpen(true); }}>
-                                      <Pencil className="h-3 w-3" />
-                                    </Button>
-                                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setDeleteEntryId(entry.id)}>
-                                      <Trash2 className="h-3 w-3 text-destructive" />
-                                    </Button>
-                                  </div>
-                                </td>
-                              )}
                             </tr>
                           ))}
                         </tbody>
@@ -267,16 +179,6 @@ export default function MeetDetailPage() {
           })}
         </Accordion>
       </div>
-
-      {/* Dialogs */}
-      {meet && (
-        <>
-          <EventFormDialog open={eventFormOpen} onOpenChange={setEventFormOpen} onSaved={loadMeetData} meetId={meet.id} initialData={editingEvent} />
-          <EntryFormDialog open={entryFormOpen} onOpenChange={setEntryFormOpen} onSaved={loadMeetData} eventId={entryEventId} initialData={editingEntry} />
-          <DeleteConfirmDialog open={!!deleteEventId} onOpenChange={o => !o && setDeleteEventId(null)} onConfirm={handleDeleteEvent} loading={deletingEvent} title="Delete Event?" description="This will delete the event and all its entries." />
-          <DeleteConfirmDialog open={!!deleteEntryId} onOpenChange={o => !o && setDeleteEntryId(null)} onConfirm={handleDeleteEntry} loading={deletingEntry} title="Delete Entry?" description="This will remove this athlete from the event." />
-        </>
-      )}
     </div>
   );
 }

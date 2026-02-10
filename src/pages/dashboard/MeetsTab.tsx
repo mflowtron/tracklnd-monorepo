@@ -4,7 +4,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { format } from 'date-fns';
-import { Calendar, Plus, Pencil, Trash2 } from 'lucide-react';
+import { Calendar, Plus, Pencil, Trash2, ExternalLink } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 import type { Tables } from '@/integrations/supabase/types';
@@ -78,7 +78,8 @@ export default function MeetsTab() {
               <Badge className={statusColor(m.status)}>{m.status}</Badge>
               <Button variant="ghost" size="icon" onClick={() => { setEditing(m); setFormOpen(true); }}><Pencil className="h-4 w-4" /></Button>
               <Button variant="ghost" size="icon" onClick={() => setDeleteId(m.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
-              <Button variant="outline" size="sm" asChild><Link to={`/meets/${m.slug}`}>View</Link></Button>
+              <Button variant="outline" size="sm" asChild><Link to={`/dashboard/meets/${m.id}`}>Manage</Link></Button>
+              <Button variant="ghost" size="sm" asChild><a href={`/meets/${m.slug}`} target="_blank" rel="noopener noreferrer"><ExternalLink className="h-3 w-3" /></a></Button>
             </div>
           </div>
         ))}
