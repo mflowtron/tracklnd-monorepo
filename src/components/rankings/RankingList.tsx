@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { GripVertical, ChevronUp, ChevronDown, Trophy, LogIn } from 'lucide-react';
+import { GripVertical, Trophy, LogIn } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Link } from 'react-router-dom';
 
@@ -63,6 +63,10 @@ export default function RankingList({ entries, savedRanking, isAuthenticated, on
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
   const preDragOrder = useRef<string[]>([]);
   const dragAthleteId = useRef<string | null>(null);
+
+  // Touch drag refs
+  const containerRef = useRef<HTMLDivElement>(null);
+  const touchDragIndex = useRef<number | null>(null);
 
   const entryMap = new Map(entries.map(e => [e.athlete_id, e]));
 
@@ -177,13 +181,54 @@ export default function RankingList({ entries, savedRanking, isAuthenticated, on
     dragAthleteId.current = null;
   };
 
-  const moveItem = (index: number, direction: -1 | 1) => {
-    const newIndex = index + direction;
-    if (newIndex < 0 || newIndex >= order.length) return;
+  // --- Touch drag handlers ---
+  const handleTouchStart = (index: number, e: React.TouchEvent) => {
+    e.preventDefault();
+    preDragOrder.current = [...order];
+    dragAthleteId.current = order[index];
+    touchDragIndex.current = index;
+    setDragIndex(index);
+    setDragOverIndex(index);
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    e.preventDefault();
+    if (dragAthleteId.current === null || !containerRef.current) return;
+    const touch = e.touches[0];
+    const children = Array.from(containerRef.current.children) as HTMLElement[];
+    let targetIndex = touchDragIndex.current ?? 0;
+
+    for (let i = 0; i < children.length; i++) {
+      const rect = children[i].getBoundingClientRect();
+      const midY = rect.top + rect.height / 2;
+      if (touch.clientY < midY) {
+        targetIndex = i;
+        break;
+      }
+      targetIndex = i;
+    }
+
+    if (targetIndex === touchDragIndex.current) return;
+    touchDragIndex.current = targetIndex;
+
+    const currentIndex = order.indexOf(dragAthleteId.current);
+    if (currentIndex === -1 || currentIndex === targetIndex) return;
     const newOrder = [...order];
-    [newOrder[index], newOrder[newIndex]] = [newOrder[newIndex], newOrder[index]];
+    const [removed] = newOrder.splice(currentIndex, 1);
+    newOrder.splice(targetIndex, 0, removed);
     setOrder(newOrder);
-    setHasChanges(true);
+    setDragOverIndex(targetIndex);
+  };
+
+  const handleTouchEnd = () => {
+    if (dragIndex !== null && dragAthleteId.current !== null) {
+      const changed = preDragOrder.current.some((id, i) => order[i] !== id);
+      if (changed) setHasChanges(true);
+    }
+    setDragIndex(null);
+    setDragOverIndex(null);
+    dragAthleteId.current = null;
+    touchDragIndex.current = null;
   };
 
   const handleSave = async () => {
@@ -211,7 +256,7 @@ export default function RankingList({ entries, savedRanking, isAuthenticated, on
         <span className="text-xs font-medium uppercase tracking-wide">Your Picks</span>
       </div>
 
-      <div className="space-y-1" onDragLeave={handleDragLeave}>
+      <div className="space-y-1" ref={containerRef} onDragLeave={handleDragLeave}>
         {order.map((athleteId, index) => {
           const entry = entryMap.get(athleteId);
           const athlete = entry?.athletes;
@@ -226,6 +271,7 @@ export default function RankingList({ entries, savedRanking, isAuthenticated, on
               onDragStart={() => handleDragStart(index)}
               onDragOver={(e) => handleDragOver(e, index)}
               onDragEnd={handleDragEnd}
+              style={isBeingDragged ? { touchAction: 'none' } : undefined}
               className={cn(
                 'flex items-center gap-2 px-2 py-1.5 rounded-md border cursor-grab active:cursor-grabbing text-sm',
                 !isBeingDragged && 'transition-all duration-150',
@@ -239,7 +285,14 @@ export default function RankingList({ entries, savedRanking, isAuthenticated, on
                     : 'bg-background border-border'
               )}
             >
-              <GripVertical className={cn('h-4 w-4 shrink-0', isDark ? 'text-white/30' : 'text-muted-foreground/50')} />
+              <div
+                className="touch-none select-none"
+                onTouchStart={(e) => handleTouchStart(index, e)}
+                onTouchMove={handleTouchMove}
+                onTouchEnd={handleTouchEnd}
+              >
+                <GripVertical className={cn('h-4 w-4 shrink-0', isDark ? 'text-white/30' : 'text-muted-foreground/50')} />
+              </div>
 
               <span className={cn('w-6 text-center font-mono text-xs font-bold shrink-0', medal ? medal.text : isDark ? 'text-white/40' : 'text-muted-foreground')}>
                 {medal ? medal.emoji : index + 1}
@@ -258,24 +311,6 @@ export default function RankingList({ entries, savedRanking, isAuthenticated, on
               </span>
 
               {entry?.is_pb && <Badge className="bg-emerald-100 text-emerald-700 text-[10px] border-0 shrink-0">PB</Badge>}
-
-              {/* Mobile arrows */}
-              <div className="flex flex-col gap-0 sm:hidden">
-                <button
-                  onClick={() => moveItem(index, -1)}
-                  disabled={index === 0}
-                  className={cn('p-0.5 rounded hover:bg-black/10 disabled:opacity-20', isDark && 'hover:bg-white/10')}
-                >
-                  <ChevronUp className="h-3 w-3" />
-                </button>
-                <button
-                  onClick={() => moveItem(index, 1)}
-                  disabled={index === order.length - 1}
-                  className={cn('p-0.5 rounded hover:bg-black/10 disabled:opacity-20', isDark && 'hover:bg-white/10')}
-                >
-                  <ChevronDown className="h-3 w-3" />
-                </button>
-              </div>
             </div>
           );
         })}
