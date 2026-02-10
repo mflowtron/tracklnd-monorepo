@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -11,6 +11,8 @@ import { toast } from 'sonner';
 export default function SignupPage() {
   const { signup } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  const from = (location.state as any)?.from || '/dashboard';
   const [displayName, setDisplayName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -34,7 +36,7 @@ export default function SignupPage() {
       toast.error(error);
     } else {
       toast.success('Account created! Check your email to confirm.');
-      navigate('/dashboard');
+      navigate(from, { replace: true });
     }
   };
 
@@ -71,7 +73,7 @@ export default function SignupPage() {
           </form>
           <p className="text-center text-sm text-muted-foreground mt-4">
             Already have an account?{' '}
-            <Link to="/login" className="text-primary hover:underline font-medium">Sign in</Link>
+            <Link to="/login" state={{ from }} className="text-primary hover:underline font-medium">Sign in</Link>
           </p>
         </CardContent>
       </Card>
