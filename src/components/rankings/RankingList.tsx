@@ -1,5 +1,6 @@
 import { useState, useRef, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { GripVertical, ChevronUp, ChevronDown, Trophy, LogIn } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Link } from 'react-router-dom';
@@ -15,6 +16,9 @@ interface Entry {
   id: string;
   athlete_id: string;
   athletes: Athlete | null;
+  place: number | null;
+  result: string | null;
+  is_pb: boolean;
 }
 
 interface RankingListProps {
@@ -26,10 +30,17 @@ interface RankingListProps {
 }
 
 const medalStyles = [
-  { bg: 'bg-amber-100 dark:bg-amber-500/20', border: 'border-amber-400', text: 'text-amber-700 dark:text-amber-300', label: '1st', emoji: '🥇' },
-  { bg: 'bg-slate-100 dark:bg-slate-500/20', border: 'border-slate-400', text: 'text-slate-600 dark:text-slate-300', label: '2nd', emoji: '🥈' },
-  { bg: 'bg-orange-100 dark:bg-orange-500/20', border: 'border-orange-400', text: 'text-orange-700 dark:text-orange-300', label: '3rd', emoji: '🥉' },
+  { bg: 'bg-amber-100 dark:bg-amber-500/20', border: 'border-amber-400', text: 'text-amber-700 dark:text-amber-300', emoji: '🥇' },
+  { bg: 'bg-slate-100 dark:bg-slate-500/20', border: 'border-slate-400', text: 'text-slate-600 dark:text-slate-300', emoji: '🥈' },
+  { bg: 'bg-orange-100 dark:bg-orange-500/20', border: 'border-orange-400', text: 'text-orange-700 dark:text-orange-300', emoji: '🥉' },
 ];
+
+const medalEmoji = (place: number | null) => {
+  if (place === 1) return '🥇';
+  if (place === 2) return '🥈';
+  if (place === 3) return '🥉';
+  return '';
+};
 
 export default function RankingList({ entries, savedRanking, isAuthenticated, onSave, variant = 'light' }: RankingListProps) {
   const isDark = variant === 'dark';
@@ -48,46 +59,83 @@ export default function RankingList({ entries, savedRanking, isAuthenticated, on
   const [saving, setSaving] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
 
-  // Drag state
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
   const preDragOrder = useRef<string[]>([]);
   const dragAthleteId = useRef<string | null>(null);
 
+  const entryMap = new Map(entries.map(e => [e.athlete_id, e]));
+
+  // --- Logged-out: blurb at top + static read-only list ---
   if (!isAuthenticated) {
     return (
-      <div className={cn(
-        'rounded-lg border p-4',
-        isDark ? 'bg-white/5 border-white/10' : 'bg-muted/50 border-border'
-      )}>
-        <div className="flex items-start gap-3">
-          <div className={cn(
-            'h-9 w-9 rounded-full flex items-center justify-center shrink-0',
-            isDark ? 'bg-amber-500/20' : 'bg-amber-100'
-          )}>
-            <Trophy className={cn('h-4.5 w-4.5', isDark ? 'text-amber-300' : 'text-amber-600')} />
+      <div className="space-y-3">
+        {/* Login blurb at top */}
+        <div className={cn(
+          'rounded-lg border p-4',
+          isDark ? 'bg-white/5 border-white/10' : 'bg-muted/50 border-border'
+        )}>
+          <div className="flex items-start gap-3">
+            <div className={cn(
+              'h-9 w-9 rounded-full flex items-center justify-center shrink-0',
+              isDark ? 'bg-amber-500/20' : 'bg-amber-100'
+            )}>
+              <Trophy className={cn('h-4.5 w-4.5', isDark ? 'text-amber-300' : 'text-amber-600')} />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className={cn('font-semibold text-sm', isDark ? 'text-white' : 'text-foreground')}>
+                Pick your podium
+              </p>
+              <p className={cn('text-xs mt-0.5', isDark ? 'text-white/50' : 'text-muted-foreground')}>
+                Log in to rank athletes and predict the top 3 finishers for each event.
+              </p>
+              <Button asChild size="sm" className="mt-2" variant={isDark ? 'outline' : 'default'}>
+                <Link to="/login">
+                  <LogIn className="h-3.5 w-3.5 mr-1" /> Log In to Pick
+                </Link>
+              </Button>
+            </div>
           </div>
-          <div className="flex-1 min-w-0">
-            <p className={cn('font-semibold text-sm', isDark ? 'text-white' : 'text-foreground')}>
-              Pick your podium
-            </p>
-            <p className={cn('text-xs mt-0.5', isDark ? 'text-white/50' : 'text-muted-foreground')}>
-              Log in to rank athletes and predict the top 3 finishers for each event.
-            </p>
-            <Button asChild size="sm" className="mt-2" variant={isDark ? 'outline' : 'default'}>
-              <Link to="/login">
-                <LogIn className="h-3.5 w-3.5 mr-1" /> Log In to Pick
-              </Link>
-            </Button>
-          </div>
+        </div>
+
+        {/* Static athlete list (read-only, no drag) */}
+        <div className="space-y-1">
+          {entries.map(entry => {
+            const athlete = entry.athletes;
+            if (!athlete) return null;
+            return (
+              <div
+                key={entry.id}
+                className={cn(
+                  'flex items-center gap-2 px-2 py-1.5 rounded-md border text-sm',
+                  entry.place && entry.place <= 3
+                    ? isDark ? 'bg-amber-500/10 border-amber-500/20' : 'bg-amber-50/50 border-amber-200'
+                    : isDark ? 'bg-white/5 border-white/10' : 'bg-background border-border'
+                )}
+              >
+                <span className={cn('w-8 text-center font-mono text-xs font-bold shrink-0', isDark ? 'text-white/50' : 'text-muted-foreground')}>
+                  {medalEmoji(entry.place)} {entry.place || '–'}
+                </span>
+                <span className={cn('flex-1 truncate font-medium', isDark ? 'text-white' : 'text-foreground')}>
+                  {athlete.country_flag} {athlete.full_name}
+                </span>
+                <span className={cn('text-xs truncate max-w-[80px] hidden sm:inline', isDark ? 'text-white/40' : 'text-muted-foreground')}>
+                  {athlete.team || ''}
+                </span>
+                <span className={cn('font-mono text-xs font-medium w-16 text-right shrink-0', isDark ? 'text-white/70' : 'text-foreground')}>
+                  {entry.result || '–'}
+                </span>
+                {entry.is_pb && <Badge className="bg-emerald-100 text-emerald-700 text-[10px] border-0 shrink-0">PB</Badge>}
+              </div>
+            );
+          })}
         </div>
       </div>
     );
   }
 
+  // --- Logged-in: draggable unified list ---
   if (entries.length === 0) return null;
-
-  const athleteMap = new Map(entries.map(e => [e.athlete_id, e.athletes]));
 
   const handleDragStart = (index: number) => {
     preDragOrder.current = [...order];
@@ -100,11 +148,8 @@ export default function RankingList({ entries, savedRanking, isAuthenticated, on
     e.preventDefault();
     if (dragIndex === null || dragAthleteId.current === null) return;
     if (index === dragOverIndex) return;
-
-    // Live reorder: move the dragged item to the new position
     const currentIndex = order.indexOf(dragAthleteId.current!);
     if (currentIndex === -1 || currentIndex === index) return;
-
     const newOrder = [...order];
     const [removed] = newOrder.splice(currentIndex, 1);
     newOrder.splice(index, 0, removed);
@@ -114,7 +159,6 @@ export default function RankingList({ entries, savedRanking, isAuthenticated, on
 
   const handleDragEnd = () => {
     if (dragIndex !== null && dragAthleteId.current !== null) {
-      // Check if order actually changed from pre-drag
       const changed = preDragOrder.current.some((id, i) => order[i] !== id);
       if (changed) setHasChanges(true);
     }
@@ -124,11 +168,9 @@ export default function RankingList({ entries, savedRanking, isAuthenticated, on
   };
 
   const handleDragLeave = (e: React.DragEvent) => {
-    // Only revert if leaving the container entirely
     const container = e.currentTarget as HTMLElement;
     const related = e.relatedTarget as HTMLElement | null;
     if (related && container.contains(related)) return;
-
     setOrder(preDragOrder.current);
     setDragIndex(null);
     setDragOverIndex(null);
@@ -169,12 +211,10 @@ export default function RankingList({ entries, savedRanking, isAuthenticated, on
         <span className="text-xs font-medium uppercase tracking-wide">Your Picks</span>
       </div>
 
-      <div
-        className="space-y-1"
-        onDragLeave={handleDragLeave}
-      >
+      <div className="space-y-1" onDragLeave={handleDragLeave}>
         {order.map((athleteId, index) => {
-          const athlete = athleteMap.get(athleteId);
+          const entry = entryMap.get(athleteId);
+          const athlete = entry?.athletes;
           if (!athlete) return null;
           const medal = index < 3 ? medalStyles[index] : null;
           const isBeingDragged = isDragging && athleteId === draggedAthleteId;
@@ -188,9 +228,7 @@ export default function RankingList({ entries, savedRanking, isAuthenticated, on
               onDragEnd={handleDragEnd}
               className={cn(
                 'flex items-center gap-2 px-2 py-1.5 rounded-md border cursor-grab active:cursor-grabbing text-sm',
-                // Smooth transition for non-dragged rows
                 !isBeingDragged && 'transition-all duration-150',
-                // Dragged item styling
                 isBeingDragged && 'opacity-50 scale-[0.98] shadow-lg ring-2 ring-primary/40 z-10 relative',
                 medal
                   ? isDark
@@ -211,11 +249,17 @@ export default function RankingList({ entries, savedRanking, isAuthenticated, on
                 {athlete.country_flag} {athlete.full_name}
               </span>
 
-              <span className={cn('text-xs truncate max-w-[80px]', isDark ? 'text-white/40' : 'text-muted-foreground')}>
+              <span className={cn('text-xs truncate max-w-[80px] hidden sm:inline', isDark ? 'text-white/40' : 'text-muted-foreground')}>
                 {athlete.team || ''}
               </span>
 
-              {/* Mobile fallback arrows */}
+              <span className={cn('font-mono text-xs font-medium w-16 text-right shrink-0', isDark ? 'text-white/70' : 'text-foreground')}>
+                {entry?.result || '–'}
+              </span>
+
+              {entry?.is_pb && <Badge className="bg-emerald-100 text-emerald-700 text-[10px] border-0 shrink-0">PB</Badge>}
+
+              {/* Mobile arrows */}
               <div className="flex flex-col gap-0 sm:hidden">
                 <button
                   onClick={() => moveItem(index, -1)}
