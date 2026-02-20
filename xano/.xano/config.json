@@ -1,0 +1,12 @@
+{
+  "instanceName": "xuea-ocs2-hswv",
+  "workspaceName": "Tracklnd",
+  "workspaceId": 8,
+  "branch": "v1",
+  "paths": {
+    "functions": "functions",
+    "tables": "tables",
+    "apis": "apis",
+    "tasks": "tasks"
+  }
+}
